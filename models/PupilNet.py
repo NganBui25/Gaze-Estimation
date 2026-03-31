@@ -38,3 +38,4 @@ class PupilNet_v2(nn.Module):
         x = flatten(self.global_pool(x))
         x = self.fc2(self.act6(self.fc1(x)))
         return x
+###
