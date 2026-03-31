@@ -1,7 +1,7 @@
 numpy
 cmake
 opencv-python
-dlib
+mediapipe
 joblib
-sklearn
+scikit-learn
 torch
