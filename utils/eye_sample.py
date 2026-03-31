@@ -1,4 +1,5 @@
 class EyeSample:
+    #nothing
     def __init__(self, orig_img, img, is_left, transform_inv, estimated_radius):
         self._orig_img = orig_img.copy()
         self._img = img.copy()
