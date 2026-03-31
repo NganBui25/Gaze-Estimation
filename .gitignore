@@ -1,0 +1,4 @@
+# Loại bỏ thư mục môi trường ảo
+venv/
+.venv/
+env/
