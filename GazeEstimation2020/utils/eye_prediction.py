@@ -1,4 +1,4 @@
-from utils.eye_sample import EyeSample
+from .eye_sample import EyeSample
 #nothing
 
 class EyePrediction():

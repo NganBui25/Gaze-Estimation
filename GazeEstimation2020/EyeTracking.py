@@ -10,7 +10,8 @@ from utils.eye_sample import EyeSample
 from utils.eye_prediction import EyePrediction
 from models.PupilNet import PupilNet_v2
 import torch.nn as nn
-from mediapipe.python.solutions import face_mesh as mp_face_mesh
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -23,12 +24,18 @@ model.load_state_dict(torch.load('models/pupilnet_v5.pt', map_location=device))
 model = model.to(device)
 print(device)
 
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(
-    max_num_faces=5, # Cho phép nhận diện nhiều người
-    refine_landmarks=True,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
+FACE_LANDMARKER_MODEL_PATH = os.path.join("models", "face_landmarker.task")
+if not os.path.exists(FACE_LANDMARKER_MODEL_PATH):
+    raise FileNotFoundError(
+        f"Missing MediaPipe face landmark model: {FACE_LANDMARKER_MODEL_PATH}"
+    )
+
+face_landmarker = vision.FaceLandmarker.create_from_options(
+    vision.FaceLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=FACE_LANDMARKER_MODEL_PATH),
+        num_faces=5,
+        running_mode=vision.RunningMode.IMAGE,
+    )
 )
 
 def shape_to_np(shape, dtype="int"):
@@ -38,8 +45,9 @@ def shape_to_np(shape, dtype="int"):
     return coords
 
 def get_mediapipe_landmarks(mesh_landmarks, w, h):
+    landmarks = getattr(mesh_landmarks, "landmark", mesh_landmarks)
     coords = np.zeros((468, 2), dtype=int)
-    for i, landmark in enumerate(mesh_landmarks.landmark[:468]):
+    for i, landmark in enumerate(landmarks[:468]):
         coords[i] = [int(landmark.x * w), int(landmark.y * h)]
     return coords
 
@@ -144,7 +152,7 @@ predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat") # pret
 left = [36, 37, 38, 39, 40, 41] # choosing only eye`s landmarks
 right = [42, 43, 44, 45, 46, 47]
 
-cap = cv2.VideoCapture(0) # initializing webcam
+cap = cv2.VideoCapture("tcp://192.168.137.183:5000") # initializing webcam
 ret, img = cap.read()
 shape = None
 """
@@ -153,7 +161,7 @@ while True:
     orig_frame = img.copy()
     frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    rects = detector(gray, 1)
+    rects = detector(gray, 1)   
     
     for rect in rects:
         shape = predictor(gray, rect)
@@ -268,10 +276,11 @@ while True:
     if not ret: break
     h, w, _ = img.shape
     rgb_frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    results = face_mesh.process(rgb_frame)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+    results = face_landmarker.detect(mp_image)
 
-    if results.multi_face_landmarks:
-        for face_landmarks in results.multi_face_landmarks:
+    if results.face_landmarks:
+        for face_landmarks in results.face_landmarks:
             # Lấy toàn bộ landmarks
             full_mp_shape = get_mediapipe_landmarks(face_landmarks, w, h)
             # Tạo shape giả lập dlib để tương thích code cũ
@@ -311,9 +320,11 @@ while True:
                     ldmks_right = (np.vstack([shape[36:42], center_right]) - shape[36]) / norm_right
                     feat_r = ldmks_right.reshape(1, -1) # Ép về 2D (1 hàng, nhiều cột)
                     look_x_r = model_x.predict(feat_r)[0]
+                    
 
                     #look_x_r = model_x.predict(ldmks_right.reshape(1, -1)[0])
-                    #look_y_r = model_y.predict(np.append(ldmks_right.reshape(1, -1), look_x_r).reshape(1, -1)[0])
+                    #look_y_r = model_y.predict(np.append(ldmks_right.reshape(
+                    # ]1, -1), look_x_r).reshape(1, -1)[0])
                     feat_y_r = np.append(feat_r.flatten(), look_x_r).reshape(1, -1)
                     look_y_r = model_y.predict(feat_y_r)[0]
 
