@@ -1,0 +1,18 @@
+# Virtual Environments
+venv/
+.venv311/
+.venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# IDE configs
+.vscode/
+
+# Datasets and Large Files
+MyDataSet/
+*.zip
+
+# Documents (Tùy chọn: bỏ dòng này đi nếu bạn muốn đưa file docx lên)
+*.docx
