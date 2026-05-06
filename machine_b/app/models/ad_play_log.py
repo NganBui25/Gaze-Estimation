@@ -43,17 +43,17 @@ class AdPlayLog(Base):
         nullable=False,
         default=0.0,
     )
-    dominant_audience_segment_id: Mapped[int] = mapped_column(
-        ForeignKey("audience_segments.id"),
-        nullable=False,
-        index=True,
-    )
+    dominant_audience_segment_id: Mapped[int | None] = mapped_column(
+    ForeignKey("audience_segments.id"),
+    nullable=True,
+    index=True,
+)
 
     advertisement: Mapped["Advertisement"] = relationship(
         "Advertisement",
         back_populates="ad_play_logs",
     )
-    dominant_audience_segment: Mapped["AudienceSegment"] = relationship(
+    dominant_audience_segment: Mapped["AudienceSegment | None"] = relationship(
         "AudienceSegment",
         back_populates="ad_play_logs",
     )

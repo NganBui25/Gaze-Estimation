@@ -7,7 +7,6 @@ from app.repositories.category_audience_score_repo import CategoryAudienceScoreR
 class CategoryAudienceScoreService:
     PRIOR_WEIGHT = 10.0
     MAX_VIEWER_WEIGHT = 5.0
-    SCORE_SCALE = 100.0
 
     def __init__(self, db: Session):
         self.db = db
@@ -56,7 +55,7 @@ class CategoryAudienceScoreService:
         avg_watch_duration = total_watch_duration/viewer_count
         watch_ratio = min(avg_watch_duration/ad_duration_seconds, 1.0)
 
-        return round(watch_ratio * self.SCORE_SCALE, 4)
+        return round(watch_ratio, 4)
     
     def update_current_score(self, category_id: int, audience_segment_id: int, viewer_count: int, total_watch_duration: float, ad_duration_seconds: int,):
         actual_score = self.calculator_actual_score(viewer_count=viewer_count, total_watch_duration=total_watch_duration, ad_duration_seconds=ad_duration_seconds,)
