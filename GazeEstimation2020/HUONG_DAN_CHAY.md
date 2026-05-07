@@ -70,3 +70,49 @@ Trong cửa sổ hiển thị, nhấn phím `q` để dừng.
 
 - Khi khởi động, script có thể hiện cảnh báo từ `scikit-learn` do khác phiên bản khi mở file `pkl`. Đây là cảnh báo, không phải lỗi dừng chương trình.
 - Nếu gặp lỗi thiếu thư viện, hãy kiểm tra lại đúng môi trường Python đang được kích hoạt.
+
+## 7. Chế độ Smart Billboard cho Máy A
+
+Nếu bạn chạy file `combined_tracking_age_gender.py`, script sẽ hoạt động theo luồng sau:
+
+1. Nhận video từ Raspberry Pi Camera qua UDP: `udp://0.0.0.0:5000`.
+2. Đọc tín hiệu từ ESP32 để biết trạng thái đèn.
+3. Khi tín hiệu là `Light`, hệ thống bắt đầu gom dữ liệu người xem trong một cửa sổ khoảng 3-5 giây.
+4. Sau đó gửi yêu cầu chọn quảng cáo đến Máy B tại:
+
+```text
+http://<MAY_B_IP>:5000/api/advertisements/select
+```
+
+5. Khi nhận được `ad_id`, `media_filename` và `duration_seconds`, script sẽ phát file video quảng cáo cục bộ.
+6. Trong lúc phát quảng cáo, hệ thống tiếp tục ghi nhận từng người xem và thời gian xem.
+7. Ngay khi quảng cáo kết thúc, script gửi báo cáo cuối cùng đến:
+
+```text
+http://<MAY_B_IP>:5000/api/ad-play-logs/report
+```
+
+### Biến môi trường nên đặt
+
+Bạn có thể đặt các biến sau trước khi chạy:
+
+```powershell
+$env:MAY_B_IP = "192.168.1.10"
+$env:VIDEO_SOURCE = "udp://0.0.0.0:5000"
+$env:SENSOR_SERIAL_PORT = "COM3"
+$env:AUDIENCE_WINDOW_SECONDS = "4"
+$env:AD_MEDIA_ROOT = "D:\PBL5\Gaze-Estimation\GazeEstimation2020"
+```
+
+Nếu ESP32 gửi tín hiệu qua socket thay vì serial, dùng:
+
+```powershell
+$env:SENSOR_SOCKET_HOST = "192.168.1.20"
+$env:SENSOR_SOCKET_PORT = "5001"
+```
+
+### Lưu ý quan trọng
+
+- Tín hiệu hợp lệ của cảm biến là `Light` và `Dark`.
+- Các mốc thời gian trong payload đều theo chuẩn ISO 8601, ví dụ: `2026-04-27T22:30:00`.
+- File video quảng cáo phải tồn tại trên máy Máy A, hoặc được tìm thấy trong thư mục `AD_MEDIA_ROOT`.
