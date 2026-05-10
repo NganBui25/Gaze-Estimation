@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card kpi-orange h-100">
+                <div class="card-body">
+                    <div class="kpi-title">Total Plays</div>
+                    <div class="kpi-value">{{ overview.kpis.total_plays }}</div>
+                    <div class="kpi-meta">
+                        <span>All advertisement plays</span>
+                        <i class="bi bi-broadcast"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card kpi-green h-100">
+                <div class="card-body">
+                    <div class="kpi-title">Total Viewers</div>
+                    <div class="kpi-value">{{ overview.kpis.total_viewers }}</div>
+                    <div class="kpi-meta">
+                        <span>Total audience reached</span>
+                        <i class="bi bi-people-fill"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card kpi-pink h-100">
+                <div class="card-body">
+                    <div class="kpi-title">Avg Look Duration</div>
+                    <div class="kpi-value">{{ overview.kpis.avg_look_duration }}s</div>
+                    <div class="kpi-meta">
+                        <span>Average watch time</span>
+                        <i class="bi bi-stopwatch-fill"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card kpi-cyan h-100">
+                <div class="card-body">
+                    <div class="kpi-title">Active Advertisements</div>
+                    <div class="kpi-value">{{ overview.kpis.active_ads }}</div>
+                    <div class="kpi-meta">
+                        <span>Currently enabled</span>
+                        <i class="bi bi-play-circle-fill"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-xl-8">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Daily Play Trend</h3>
+                        <div class="panel-subtitle">Advertisement plays in the last 7 days</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="dailyPlayTrendChart" height="110"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Gender Distribution</h3>
+                        <div class="panel-subtitle">Viewer balance by gender</div>
+                    </div>
+                </div>
+                <div class="panel-body d-flex flex-column align-items-center justify-content-center">
+                    <div style="width: 100%; max-width: 280px;">
+                        <canvas id="genderDistributionChart"></canvas>
+                    </div>
+
+                    <div class="mt-4 w-100">
+                        {% if overview.gender_distribution %}
+                            {% for item in overview.gender_distribution %}
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="text-capitalize">{{ item.gender }}</span>
+                                    <span class="fw-semibold">{{ item.viewer_count }}</span>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="empty-state">No data available</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-xl-6">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Viewer Trend</h3>
+                        <div class="panel-subtitle">Audience volume in the last 7 days</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="dailyViewerTrendChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Age Group Distribution</h3>
+                        <div class="panel-subtitle">Audience analysis by age group</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="ageDistributionChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-xl-6">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Top Performing Advertisements</h3>
+                        <div class="panel-subtitle">Sorted by avg look duration and audience size</div>
+                    </div>
+                </div>
+                <div class="panel-body p-0">
+                    {% if overview.top_ads %}
+                        <div class="table-responsive">
+                            <table class="table table-modern align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Ad</th>
+                                        <th>Total Plays</th>
+                                        <th>Total Viewers</th>
+                                        <th>Avg Look</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ad in overview.top_ads %}
+                                        <tr>
+                                            <td>
+                                                <div class="fw-semibold">{{ ad.title }}</div>
+                                                <div class="text-muted small">ID: {{ ad.ad_id }}</div>
+                                            </td>
+                                            <td>{{ ad.total_plays }}</td>
+                                            <td>{{ ad.total_viewers }}</td>
+                                            <td>{{ ad.avg_look_duration }}s</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="empty-state">No records found</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Recent Play Logs</h3>
+                        <div class="panel-subtitle">Latest advertisement playback records</div>
+                    </div>
+                </div>
+                <div class="panel-body p-0">
+                    {% if overview.recent_logs %}
+                        <div class="table-responsive">
+                            <table class="table table-modern align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Ad</th>
+                                        <th>Viewers</th>
+                                        <th>Avg Look</th>
+                                        <th>Segment</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for log in overview.recent_logs %}
+                                        <tr>
+                                            <td>{{ log.played_at_text }}</td>
+                                            <td>{{ log.ad_title }}</td>
+                                            <td>{{ log.total_viewers }}</td>
+                                            <td>{{ log.avg_look_duration }}s</td>
+                                            <td>
+                                                <span class="badge-soft">{{ log.dominant_segment }}</span>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="empty-state">No records found</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="panel-card">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Top Categories</h3>
+                        <div class="panel-subtitle">Best performing advertisement groups</div>
+                    </div>
+                </div>
+                <div class="panel-body p-0">
+                    {% if overview.top_categories %}
+                        <div class="table-responsive">
+                            <table class="table table-modern align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>Total Plays</th>
+                                        <th>Total Viewers</th>
+                                        <th>Avg Look Duration</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for category in overview.top_categories %}
+                                        <tr>
+                                            <td>{{ category.category_name }}</td>
+                                            <td>{{ category.total_plays }}</td>
+                                            <td>{{ category.total_viewers }}</td>
+                                            <td>{{ category.avg_look_duration }}s</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="empty-state">No records found</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const dailyPlayTrendData = {{ overview.daily_play_trend | tojson }};
+    const dailyViewerTrendData = {{ overview.daily_viewer_trend | tojson }};
+    const genderDistributionData = {{ overview.gender_distribution | tojson }};
+    const ageDistributionData = {{ overview.age_distribution | tojson }};
+    const ageGroupDisplayOrder = ["<18", "18-25", "26-35", "36-50", ">50"];
+    const ageGroupColors = [
+        "#5b8def",
+        "#16c79a",
+        "#ff9f43",
+        "#ee5253",
+        "#8e44ad"
+    ];
+
+    function buildLineChart(canvasId, datasetLabel, labels, values, color) {
+        const element = document.getElementById(canvasId);
+        if (!element) return;
+
+        new Chart(element, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: datasetLabel,
+                        data: values,
+                        borderColor: color,
+                        backgroundColor: color + "22",
+                        tension: 0.35,
+                        fill: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    function buildDoughnutChart(canvasId, labels, values) {
+        const element = document.getElementById(canvasId);
+        if (!element) return;
+
+        new Chart(element, {
+            type: "doughnut",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        data: values,
+                        backgroundColor: ["#36a2eb", "#ff6384", "#4bc0c0", "#ffcd56"],
+                        borderWidth: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                cutout: "70%",
+                plugins: {
+                    legend: {
+                        position: "bottom"
+                    }
+                }
+            }
+        });
+    }
+
+    function normalizeAgeDistribution(rawAgeDistribution) {
+        const normalizedDistribution = new Map(
+            ageGroupDisplayOrder.map(label => [label, 0])
+        );
+
+        rawAgeDistribution.forEach(item => {
+            const rawLabel = String(item.age_group || "").trim();
+            const viewerCount = Number.parseInt(item.viewer_count, 10) || 0;
+
+            const normalizedKey = rawLabel
+                .toLowerCase()
+                .replace(/\s+/g, "")
+                .replace(/years?old|tuoi|age|group|\(|\)/g, "")
+                .trim();
+
+            let normalizedLabel = null;
+            if (normalizedKey.includes("<18") || normalizedKey.includes("under18")) {
+                normalizedLabel = "<18";
+            } else if (normalizedKey.includes("18-25")) {
+                normalizedLabel = "18-25";
+            } else if (normalizedKey.includes("26-35")) {
+                normalizedLabel = "26-35";
+            } else if (
+                normalizedKey.includes("36-45") ||
+                normalizedKey.includes("36-50")
+            ) {
+                normalizedLabel = "36-50";
+            } else if (normalizedKey.includes(">50") || normalizedKey.includes("over50")) {
+                normalizedLabel = ">50";
+            }
+
+            if (!normalizedLabel) {
+                return;
+            }
+
+            normalizedDistribution.set(
+                normalizedLabel,
+                normalizedDistribution.get(normalizedLabel) + viewerCount
+            );
+        });
+
+        return {
+            labels: ageGroupDisplayOrder,
+            values: ageGroupDisplayOrder.map(label => normalizedDistribution.get(label)),
+        };
+    }
+
+    function buildBarChart(canvasId, labels, values) {
+        const element = document.getElementById(canvasId);
+        if (!element) return;
+
+        new Chart(element, {
+            type: "bar",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: "Viewers",
+                        data: values,
+                        backgroundColor: ageGroupColors,
+                        borderRadius: 10
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 0,
+                            minRotation: 0,
+                        },
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0,
+                            callback: function(value) {
+                                return Math.round(value);
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `Viewers: ${Math.round(context.parsed.y)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    buildLineChart(
+        "dailyPlayTrendChart",
+        "Play Count",
+        dailyPlayTrendData.map(item => item.date),
+        dailyPlayTrendData.map(item => item.play_count),
+        "#ff7a59"
+    );
+
+    buildLineChart(
+        "dailyViewerTrendChart",
+        "Viewer Count",
+        dailyViewerTrendData.map(item => item.date),
+        dailyViewerTrendData.map(item => item.viewer_count),
+        "#16c79a"
+    );
+
+    buildDoughnutChart(
+        "genderDistributionChart",
+        genderDistributionData.map(item => item.gender),
+        genderDistributionData.map(item => item.viewer_count)
+    );
+
+    const normalizedAgeDistribution = normalizeAgeDistribution(ageDistributionData);
+
+    buildBarChart(
+        "ageDistributionChart",
+        normalizedAgeDistribution.labels,
+        normalizedAgeDistribution.values
+    );
+</script>
+{% endblock %}

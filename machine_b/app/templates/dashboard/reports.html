@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="panel-card mb-4">
+        <div class="panel-header">
+            <div>
+                <h3 class="panel-title">Performance Reports</h3>
+                <div class="panel-subtitle">Summarize advertisement performance by period</div>
+            </div>
+        </div>
+
+        <div class="panel-body">
+            <form method="get" action="/dashboard/reports">
+                <div class="row g-3">
+                    <div class="col-12 col-md-3">
+                        <select class="form-select" name="period">
+                            <option value="daily" {% if filters.period == "daily" %}selected{% endif %}>Daily</option>
+                            <option value="weekly" {% if filters.period == "weekly" %}selected{% endif %}>Weekly</option>
+                            <option value="monthly" {% if filters.period == "monthly" %}selected{% endif %}>Monthly</option>
+                        </select>
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                        <input type="date" class="form-control" name="date_from" value="{{ filters.date_from }}">
+                    </div>
+
+                    <div class="col-12 col-md-3">
+                        <input type="date" class="form-control" name="date_to" value="{{ filters.date_to }}">
+                    </div>
+
+                    <div class="col-12 col-md-3 d-flex gap-2">
+                        <button class="btn btn-outline-secondary flex-grow-1" type="submit">
+                            <i class="bi bi-bar-chart-line me-2"></i>
+                            Generate
+                        </button>
+                        <a class="btn btn-outline-light border flex-grow-1" href="/dashboard/reports">
+                            Reset
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="panel-card h-100">
+                <div class="panel-body">
+                    <div class="text-muted small">Report Plays</div>
+                    <div class="fs-2 fw-bold">{{ report_summary.total_plays }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="panel-card h-100">
+                <div class="panel-body">
+                    <div class="text-muted small">Report Viewers</div>
+                    <div class="fs-2 fw-bold">{{ report_summary.total_viewers }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="panel-card h-100">
+                <div class="panel-body">
+                    <div class="text-muted small">Avg Look Duration</div>
+                    <div class="fs-2 fw-bold">{{ report_summary.avg_look_duration }}s</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="panel-card h-100">
+                <div class="panel-body">
+                    <div class="text-muted small">Best Advertisement</div>
+                    <div class="fs-5 fw-bold">{{ report_summary.best_ad_title or "N/A" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-xl-8">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Performance Trend</h3>
+                        <div class="panel-subtitle">Compare play count and viewer count over time</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="reportTrendChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Age Group Distribution</h3>
+                        <div class="panel-subtitle">Viewer share by age group</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="segmentDistributionChart" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-xl-6">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Viewer Count By Category</h3>
+                        <div class="panel-subtitle">Compare total audience volume across all categories</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="topAdsViewerChart" height="160"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+            <div class="panel-card h-100">
+                <div class="panel-header">
+                    <div>
+                        <h3 class="panel-title">Average Look Duration By Category</h3>
+                        <div class="panel-subtitle">Compare watch quality across all categories</div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="adLookDurationChart" height="160"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-card">
+        <div class="panel-header">
+            <div>
+                <h3 class="panel-title">Performance Summary Table</h3>
+                <div class="panel-subtitle">Aggregated by advertisement and audience segment</div>
+            </div>
+        </div>
+
+        <div class="panel-body p-0">
+            {% if report_rows %}
+                <div class="table-responsive">
+                    <table class="table table-modern align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Advertisement</th>
+                                <th>Audience Segment</th>
+                                <th>Play Count</th>
+                                <th>Viewer Count</th>
+                                <th>Avg Look Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in report_rows %}
+                                <tr>
+                                    <td>{{ row.stats_date }}</td>
+                                    <td>{{ row.ad_title }}</td>
+                                    <td>{{ row.segment_label }}</td>
+                                    <td>{{ row.play_count }}</td>
+                                    <td>{{ row.viewer_count }}</td>
+                                    <td>{{ row.avg_look_duration }}s</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-state">No report data found</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const reportRows = {{ report_rows | tojson }};
+    const reportCategoryDefinitions = [
+        { key: "Tech", label: "Tech" },
+        { key: "Fashion", label: "Fashion" },
+        { key: "Food", label: "Food" },
+        { key: "Health and Beauty", label: "Health & Beauty" },
+        { key: "Travel", label: "Travel" },
+        { key: "Entertainment", label: "Entertainment" }
+    ];
+    const reportCategoryColors = [
+        "#5b8def",
+        "#16c79a",
+        "#ff9f43",
+        "#ee5253",
+        "#8e44ad",
+        "#20bf6b"
+    ];
+    const reportAgeGroupOrder = ["<18", "18-25", "26-35", "36-50", ">50"];
+    const reportAgeGroupColors = [
+        "#4f8cff",
+        "#2ecc71",
+        "#f39c12",
+        "#9b59b6",
+        "#e74c3c"
+    ];
+
+    function groupReportRowsByDate(rows) {
+        const grouped = new Map();
+
+        rows.forEach(row => {
+            const current = grouped.get(row.stats_date) || {
+                play_count: 0,
+                viewer_count: 0
+            };
+
+            current.play_count += Number.parseInt(row.play_count, 10) || 0;
+            current.viewer_count += Number.parseInt(row.viewer_count, 10) || 0;
+            grouped.set(row.stats_date, current);
+        });
+
+        return Array.from(grouped.entries())
+            .sort((left, right) => left[0].localeCompare(right[0]))
+            .map(([statsDate, values]) => ({
+                stats_date: statsDate,
+                play_count: values.play_count,
+                viewer_count: values.viewer_count
+            }));
+    }
+
+    function normalizeAgeGroupLabel(rawValue) {
+        const normalizedLabel = String(rawValue || "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+
+        if (
+            normalizedLabel.includes("<18") ||
+            normalizedLabel.includes("under 18")
+        ) {
+            return "<18";
+        }
+
+        if (normalizedLabel.includes("18-25")) {
+            return "18-25";
+        }
+
+        if (normalizedLabel.includes("26-35")) {
+            return "26-35";
+        }
+
+        if (
+            normalizedLabel.includes("36-45") ||
+            normalizedLabel.includes("36-50")
+        ) {
+            return "36-50";
+        }
+
+        if (
+            normalizedLabel.includes(">50") ||
+            normalizedLabel.includes("over 50")
+        ) {
+            return ">50";
+        }
+
+        return null;
+    }
+
+    function normalizeCategoryName(rawValue) {
+        const normalizedLabel = String(rawValue || "")
+            .toLowerCase()
+            .replace(/_/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        const categoryMap = {
+            "tech": "Tech",
+            "fashion": "Fashion",
+            "food": "Food",
+            "health and beauty": "Health and Beauty",
+            "travel": "Travel",
+            "entertainment": "Entertainment"
+        };
+
+        return categoryMap[normalizedLabel] || rawValue;
+    }
+
+    function groupReportRowsByCategory(rows) {
+        const grouped = new Map(
+            reportCategoryDefinitions.map(category => [
+                category.key,
+                {
+                    viewer_count: 0,
+                    total_look_duration: 0,
+                    total_plays: 0
+                }
+            ])
+        );
+
+        rows.forEach(row => {
+            const categoryName = normalizeCategoryName(row.category_name);
+            if (!grouped.has(categoryName)) {
+                grouped.set(categoryName, {
+                    viewer_count: 0,
+                    total_look_duration: 0,
+                    total_plays: 0
+                });
+            }
+
+            const current = grouped.get(categoryName);
+            const playCount = Number.parseInt(row.play_count, 10) || 0;
+            const viewerCount = Number.parseInt(row.viewer_count, 10) || 0;
+            const avgLookDuration = Number.parseFloat(row.avg_look_duration) || 0;
+
+            current.viewer_count += viewerCount;
+            current.total_plays += playCount;
+            current.total_look_duration += avgLookDuration * Math.max(playCount, 1);
+        });
+
+        return reportCategoryDefinitions.map(category => {
+            const values = grouped.get(category.key);
+
+            return {
+                category_name: category.key,
+                category_label: category.label,
+                viewer_count: values.viewer_count,
+                avg_look_duration: values.total_plays > 0
+                    ? values.total_look_duration / values.total_plays
+                    : 0
+            };
+        });
+    }
+
+    function groupReportRowsByAgeGroup(rows) {
+        const grouped = new Map(
+            reportAgeGroupOrder.map(ageGroup => [ageGroup, 0])
+        );
+
+        rows.forEach(row => {
+            const normalizedAgeGroup = normalizeAgeGroupLabel(row.segment_label);
+            if (!normalizedAgeGroup || !grouped.has(normalizedAgeGroup)) {
+                return;
+            }
+
+            const current = grouped.get(normalizedAgeGroup) || 0;
+            grouped.set(
+                normalizedAgeGroup,
+                current + (Number.parseInt(row.viewer_count, 10) || 0)
+            );
+        });
+
+        return reportAgeGroupOrder
+            .map(ageGroup => ({
+                age_group: ageGroup,
+                viewer_count: grouped.get(ageGroup) || 0
+            }));
+    }
+
+    function buildReportTrendChart(rows) {
+        const element = document.getElementById("reportTrendChart");
+        if (!element) return;
+
+        const grouped = groupReportRowsByDate(rows);
+
+        new Chart(element, {
+            type: "line",
+            data: {
+                labels: grouped.map(item => item.stats_date),
+                datasets: [
+                    {
+                        label: "Plays",
+                        data: grouped.map(item => item.play_count),
+                        borderColor: "#5b8def",
+                        backgroundColor: "#5b8def22",
+                        fill: true,
+                        tension: 0.35,
+                        borderWidth: 3,
+                        pointRadius: 4
+                    },
+                    {
+                        label: "Viewers",
+                        data: grouped.map(item => item.viewer_count),
+                        borderColor: "#16c79a",
+                        backgroundColor: "#16c79a22",
+                        fill: true,
+                        tension: 0.35,
+                        borderWidth: 3,
+                        pointRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0,
+                            callback: value => Math.round(value)
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function buildSegmentDistributionChart(rows) {
+        const element = document.getElementById("segmentDistributionChart");
+        if (!element) return;
+
+        const grouped = groupReportRowsByAgeGroup(rows);
+
+        new Chart(element, {
+            type: "bar",
+            data: {
+                labels: grouped.map(item => item.age_group),
+                datasets: [
+                    {
+                        label: "Viewers",
+                        data: grouped.map(item => item.viewer_count),
+                        backgroundColor: reportAgeGroupColors,
+                        borderRadius: 10
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0,
+                            callback: value => Math.round(value)
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function buildTopAdsViewerChart(rows) {
+        const element = document.getElementById("topAdsViewerChart");
+        if (!element) return;
+
+        const grouped = groupReportRowsByCategory(rows);
+
+        new Chart(element, {
+            type: "bar",
+            data: {
+                labels: grouped.map(item => item.category_label),
+                datasets: [
+                    {
+                        label: "Viewers",
+                        data: grouped.map(item => item.viewer_count),
+                        backgroundColor: reportCategoryColors,
+                        borderRadius: 10
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 0,
+                            minRotation: 0
+                        },
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0,
+                            callback: value => Math.round(value)
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function buildAdLookDurationChart(rows) {
+        const element = document.getElementById("adLookDurationChart");
+        if (!element) return;
+
+        const grouped = groupReportRowsByCategory(rows);
+
+        new Chart(element, {
+            type: "bar",
+            data: {
+                labels: grouped.map(item => item.category_label),
+                datasets: [
+                    {
+                        label: "Avg Look Duration (s)",
+                        data: grouped.map(item => Number(item.avg_look_duration.toFixed(2))),
+                        backgroundColor: reportCategoryColors,
+                        borderRadius: 10
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: context => `Avg Look: ${context.parsed.y.toFixed(2)}s`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 0,
+                            minRotation: 0
+                        },
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    buildReportTrendChart(reportRows);
+    buildSegmentDistributionChart(reportRows);
+    buildTopAdsViewerChart(reportRows);
+    buildAdLookDurationChart(reportRows);
+</script>
+{% endblock %}

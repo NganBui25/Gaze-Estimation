@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title or "Machine B Dashboard" }}</title>
+
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+        rel="stylesheet"
+    >
+
+    <style>
+        :root {
+            --sidebar-bg: #24273a;
+            --sidebar-hover: #32364b;
+            --sidebar-active: #3f4663;
+            --page-bg: #f5f7fb;
+            --card-bg: #ffffff;
+            --text-dark: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+            --kpi-orange: linear-gradient(135deg, #ff9a76, #ffb088);
+            --kpi-green: linear-gradient(135deg, #27d980, #5be7a8);
+            --kpi-pink: linear-gradient(135deg, #ff6f91, #ff8fab);
+            --kpi-cyan: linear-gradient(135deg, #1bc9d4, #55dff0);
+        }
+
+        body {
+            margin: 0;
+            background: var(--page-bg);
+            color: var(--text-dark);
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .dashboard-shell {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            inset: 0 auto 0 0;
+            z-index: 1000;
+        }
+
+        .sidebar-brand {
+            padding: 22px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .sidebar-menu {
+            padding: 18px 12px;
+        }
+
+        .sidebar-menu .menu-label {
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 12px 14px 8px;
+        }
+
+        .sidebar-menu a {
+            color: rgba(255, 255, 255, 0.88);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            margin-bottom: 6px;
+            transition: background 0.2s ease;
+            font-size: 0.95rem;
+        }
+
+        .sidebar-menu a:hover {
+            background: var(--sidebar-hover);
+        }
+
+        .sidebar-menu a.active {
+            background: var(--sidebar-active);
+            font-weight: 600;
+        }
+
+        .main-wrapper {
+            flex: 1;
+            margin-left: 260px;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .topbar {
+            height: 72px;
+            background: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 900;
+        }
+
+        .topbar-left h1 {
+            font-size: 1.25rem;
+            margin: 0;
+            font-weight: 700;
+        }
+
+        .topbar-left p {
+            margin: 2px 0 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f3f4f6;
+            border: 1px solid #eef0f4;
+            border-radius: 10px;
+            padding: 10px 14px;
+            min-width: 240px;
+        }
+
+        .search-box input {
+            border: none;
+            background: transparent;
+            outline: none;
+            width: 100%;
+            font-size: 0.92rem;
+        }
+
+        .icon-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #4b5563;
+            font-size: 1rem;
+        }
+
+        .profile-chip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 8px 12px;
+        }
+
+        .profile-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #dbeafe;
+            color: #1d4ed8;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .content-area {
+            padding: 24px;
+        }
+
+        .panel-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+        }
+
+        .panel-card .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 20px 0;
+        }
+
+        .panel-card .panel-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .panel-card .panel-subtitle {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .panel-card .panel-body {
+            padding: 20px;
+        }
+
+        .kpi-card {
+            border: none;
+            color: #ffffff;
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        .kpi-card .card-body {
+            padding: 20px;
+        }
+
+        .kpi-title {
+            font-size: 0.92rem;
+            opacity: 0.92;
+        }
+
+        .kpi-value {
+            font-size: 2rem;
+            font-weight: 800;
+            margin: 8px 0 10px;
+            line-height: 1.1;
+        }
+
+        .kpi-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.86rem;
+            opacity: 0.92;
+        }
+
+        .kpi-orange { background: var(--kpi-orange); }
+        .kpi-green { background: var(--kpi-green); }
+        .kpi-pink { background: var(--kpi-pink); }
+        .kpi-cyan { background: var(--kpi-cyan); }
+
+        .table-modern {
+            margin: 0;
+        }
+
+        .table-modern th {
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color);
+            padding: 14px 16px;
+            white-space: nowrap;
+        }
+
+        .table-modern td {
+            padding: 14px 16px;
+            vertical-align: middle;
+            border-bottom: 1px solid #f1f3f8;
+            font-size: 0.93rem;
+        }
+
+        .badge-soft {
+            background: #eef2ff;
+            color: #4338ca;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .empty-state {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 32px 16px;
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 991.98px) {
+            .sidebar {
+                position: static;
+                width: 100%;
+                min-height: auto;
+            }
+
+            .main-wrapper {
+                margin-left: 0;
+            }
+
+            .dashboard-shell {
+                flex-direction: column;
+            }
+
+            .topbar {
+                padding: 16px;
+                height: auto;
+                gap: 16px;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .topbar-right {
+                flex-wrap: wrap;
+            }
+
+            .search-box {
+                min-width: 0;
+                width: 100%;
+            }
+        }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <div class="dashboard-shell">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                Smart Billboard
+            </div>
+
+            <nav class="sidebar-menu">
+                <div class="menu-label">Main</div>
+
+                <a href="/dashboard" class="{% if active_page == 'dashboard' %}active{% endif %}">
+                    <i class="bi bi-grid-1x2-fill"></i>
+                    <span>Dashboard</span>
+                </a>
+
+                <a href="/dashboard/advertisements" class="{% if active_page == 'advertisements' %}active{% endif %}">
+                    <i class="bi bi-play-btn-fill"></i>
+                    <span>Advertisements</span>
+                </a>
+
+                <a href="/dashboard/categories" class="{% if active_page == 'categories' %}active{% endif %}">
+                    <i class="bi bi-collection-fill"></i>
+                    <span>Categories</span>
+                </a>
+
+                <a href="/dashboard/play-logs" class="{% if active_page == 'play_logs' %}active{% endif %}">
+                    <i class="bi bi-clock-history"></i>
+                    <span>Play Logs</span>
+                </a>
+
+                <a href="/dashboard/reports" class="{% if active_page == 'reports' %}active{% endif %}">
+                    <i class="bi bi-bar-chart-fill"></i>
+                    <span>Reports</span>
+                </a>
+            </nav>
+        </aside>
+
+        <div class="main-wrapper">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <h1>{{ page_title or "Dashboard" }}</h1>
+                    <p>{{ page_subtitle or "Advertisement monitoring and management" }}</p>
+                </div>
+
+                <div class="topbar-right">
+                    <div class="search-box">
+                        <i class="bi bi-search text-secondary"></i>
+                        <input type="text" placeholder="Search">
+                    </div>
+
+                    <button class="icon-btn" type="button">
+                        <i class="bi bi-bell"></i>
+                    </button>
+
+                    <div class="profile-chip">
+                        <div class="profile-avatar">A</div>
+                        <div>
+                            <div class="fw-semibold" style="font-size: 0.9rem;">Admin</div>
+                            <div class="text-muted" style="font-size: 0.8rem;">Machine B</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="content-area">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

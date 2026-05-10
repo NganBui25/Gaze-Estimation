@@ -12,7 +12,7 @@ class AudienceSegmentService:
     def normalize_gender(self, gender: str):
         nomalized_gender = gender.strip().lower()
         if nomalized_gender not in self.ALLOWED_GENDERS:
-            return ValueError("gender is invalid")
+            raise ValueError("gender is invalid")
         return nomalized_gender
     
     def get_by_id(self, segment_id: int) -> AudienceSegment | None:
@@ -20,7 +20,7 @@ class AudienceSegmentService:
     
     def get_segment_by_age_and_gender( self, avg_age: int, gender: str):
         if avg_age < 0:
-            raise ValueError("avg_age must be grater than or equal to )")
+            raise ValueError("avg_age must be greater than or equal to 0")
         
         normalized_gender = self.normalize_gender(gender)
 

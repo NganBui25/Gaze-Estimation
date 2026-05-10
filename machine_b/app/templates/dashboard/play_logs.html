@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="panel-card mb-4">
+        <div class="panel-header">
+            <div>
+                <h3 class="panel-title">Play Log History</h3>
+                <div class="panel-subtitle">Track every advertisement playback session</div>
+            </div>
+        </div>
+
+        <div class="panel-body">
+            <div class="row g-3">
+                <div class="col-12 col-md-3">
+                    <input type="date" class="form-control">
+                </div>
+                <div class="col-12 col-md-3">
+                    <input type="date" class="form-control">
+                </div>
+                <div class="col-12 col-md-3">
+                    <select class="form-select">
+                        <option selected>All Advertisements</option>
+                        {% for ad in advertisements %}
+                            <option value="{{ ad.id }}">{{ ad.title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <button class="btn btn-outline-secondary w-100">
+                        <i class="bi bi-funnel me-2"></i>
+                        Apply Filter
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-card">
+        <div class="panel-header">
+            <div>
+                <h3 class="panel-title">Playback Records</h3>
+                <div class="panel-subtitle">Most recent sessions first</div>
+            </div>
+        </div>
+
+        <div class="panel-body p-0">
+            {% if play_logs %}
+                <div class="table-responsive">
+                    <table class="table table-modern align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Log ID</th>
+                                <th>Played At</th>
+                                <th>Advertisement</th>
+                                <th>Category</th>
+                                <th>Total Viewers</th>
+                                <th>Avg Look Duration</th>
+                                <th>Dominant Segment</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in play_logs %}
+                                <tr>
+                                    <td>{{ log.log_id }}</td>
+                                    <td>{{ log.played_at_text }}</td>
+                                    <td>{{ log.ad_title }}</td>
+                                    <td>{{ log.category_name }}</td>
+                                    <td>{{ log.total_viewers }}</td>
+                                    <td>{{ log.avg_look_duration }}s</td>
+                                    <td>
+                                        <span class="badge-soft">{{ log.dominant_segment }}</span>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-state">No play logs found</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

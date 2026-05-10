@@ -81,7 +81,7 @@ class CategoryAudienceScoreService:
             + (actual_score * viewer_weight)
         ) / (self.PRIOR_WEIGHT + viewer_weight)
 
-        category_audience_score.current_score = round(new_current_score, 0)
+        category_audience_score.current_score = round(new_current_score, 4)
         self.db.flush()
 
         return category_audience_score
