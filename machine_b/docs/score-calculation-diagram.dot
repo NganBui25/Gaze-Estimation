@@ -1,0 +1,64 @@
+digraph ScoreCalculation {
+    graph [
+        rankdir=TB,
+        bgcolor="white",
+        pad="0.3",
+        nodesep="0.45",
+        ranksep="0.55",
+        fontname="Arial"
+    ];
+
+    node [
+        shape=box,
+        style="rounded,filled",
+        fillcolor="#F8FAFC",
+        color="#CBD5E1",
+        fontname="Arial",
+        fontsize=11,
+        margin="0.18,0.12"
+    ];
+
+    edge [
+        color="#64748B",
+        penwidth=1.2,
+        arrowsize=0.8
+    ];
+
+    title [
+        label="Category Audience Score Update Flow",
+        shape=plain,
+        fontname="Arial Bold",
+        fontsize=18
+    ];
+
+    request [label="Machine A sends report\n(ad_id, viewers, watch_duration)"];
+    group_stats [label="Machine B groups viewers\nby audience_segment"];
+    segment_metrics [label="For each segment:\nviewer_count\ntotal_watch_duration"];
+    avg_watch [label="avg_watch_duration\n=\ntotal_watch_duration / viewer_count"];
+    actual_score [label="actual_score\n=\nmin(avg_watch_duration /\nad_duration_seconds, 1.0)"];
+    viewer_weight [label="viewer_weight\n=\nmin(viewer_count, MAX_VIEWER_WEIGHT)"];
+    prior [label="old_current_score\nweighted by PRIOR_WEIGHT"];
+    combine [label="weighted average\nnew_current_score =\n((old_current_score * PRIOR_WEIGHT)\n + (actual_score * viewer_weight))\n/ (PRIOR_WEIGHT + viewer_weight)"];
+    round_score [label="round(new_current_score, 4)"];
+    store [label="update category_audience_scores.current_score"];
+
+    note_params [
+        label="Current parameters:\nPRIOR_WEIGHT = 10.0\nMAX_VIEWER_WEIGHT = 5.0",
+        fillcolor="#EFF6FF",
+        color="#93C5FD"
+    ];
+
+    note_scale [
+        label="Score scale:\n0.0 -> 1.0",
+        fillcolor="#ECFDF5",
+        color="#86EFAC"
+    ];
+
+    title -> request [style=invis];
+    request -> group_stats -> segment_metrics -> avg_watch -> actual_score -> viewer_weight -> combine -> round_score -> store;
+    prior -> combine;
+    note_params -> viewer_weight [style=dashed];
+    note_params -> prior [style=dashed];
+    note_scale -> actual_score [style=dashed];
+    note_scale -> store [style=dashed];
+}

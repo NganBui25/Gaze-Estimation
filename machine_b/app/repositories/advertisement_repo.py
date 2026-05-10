@@ -1,7 +1,9 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.advertisement import Advertisement
+from app.models.ad_performance_summary import AdPerformanceSummary
+from app.models.ad_play_log import AdPlayLog
 
 class AdvertisementRepo:
     def __init__(self, db: Session):
@@ -37,3 +39,41 @@ class AdvertisementRepo:
             .limit(1)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def create(
+        self,
+        title: str,
+        description: str | None,
+        media_filename: str,
+        duration_seconds: int,
+        category_id: int,
+        is_active: bool = True,
+    ) -> Advertisement:
+        advertisement = Advertisement(
+            title=title,
+            description=description,
+            media_filename=media_filename,
+            duration_seconds=duration_seconds,
+            category_id=category_id,
+            is_active=is_active,
+        )
+        self.db.add(advertisement)
+        self.db.flush()
+        return advertisement
+
+    def delete(self, advertisement: Advertisement) -> None:
+        self.db.delete(advertisement)
+        self.db.flush()
+
+    def has_related_activity(self, advertisement_id: int) -> bool:
+        play_stmt = select(func.count(AdPlayLog.id)).where(
+            AdPlayLog.advertisement_id == advertisement_id
+        )
+        summary_stmt = select(func.count(AdPerformanceSummary.id)).where(
+            AdPerformanceSummary.advertisement_id == advertisement_id
+        )
+
+        play_count = self.db.execute(play_stmt).scalar_one()
+        summary_count = self.db.execute(summary_stmt).scalar_one()
+
+        return bool(play_count or summary_count)
