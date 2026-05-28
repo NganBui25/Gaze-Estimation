@@ -1,4 +1,6 @@
 from datetime import date, datetime
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 class ViewerReportItem(BaseModel):
@@ -13,7 +15,6 @@ class AdReportRequest(BaseModel):
     total_viewers: int = Field(..., ge=0, description="Tong so nguoi xem")
     viewers: list[ViewerReportItem] = Field(
         ...,
-        min_length=1,
         description="Danh sach nguoi xem trong luc quang cao chay",
     )
 
@@ -22,7 +23,7 @@ class AdReportResponse(BaseModel):
     advertisement_id: int = Field(..., description="ID quang cao")
     total_viewers: int = Field(..., ge=0)
     avg_look_duration: float = Field(..., ge=0)
-    dominant_audience_segment_id: int = Field(..., description="Segment chiem uu the")
+    dominant_audience_segment_id: Optional[int] = Field(None, description="Segment chiem uu the")
     stats_date: date
     message: str = "ad report saved successfully"
 

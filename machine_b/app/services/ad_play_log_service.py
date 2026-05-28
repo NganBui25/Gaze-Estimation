@@ -64,20 +64,20 @@ class AdPlayLogService:
             for audience_segment_id, segment_stat in grouped_stats.items():
                 viewer_count_increment = int(segment_stat["viewer_count"])
                 total_watch_duration_increment = float(segment_stat["total_watch_duration"])
-                self.ad_performance_summary_service.update_summary(
-                    advertisement_id=request.ad_id,
-                    audience_segment_id=audience_segment_id,
-                    stats_date=stats_date,
-                    viewer_count_increment=viewer_count_increment,
-                    total_watch_duration_increment=total_watch_duration_increment,
-                )
-
                 self.category_audience_score_service.update_current_score(
                     category_id=advertisement.category_id,
                     audience_segment_id=audience_segment_id,
                     viewer_count=viewer_count_increment,
                     total_watch_duration=total_watch_duration_increment,
                     ad_duration_seconds=advertisement.duration_seconds,
+                )
+
+                self.ad_performance_summary_service.update_summary(
+                    advertisement_id=request.ad_id,
+                    audience_segment_id=audience_segment_id,
+                    stats_date=stats_date,
+                    viewer_count_increment=viewer_count_increment,
+                    total_watch_duration_increment=total_watch_duration_increment,
                 )
 
             self.db.commit()

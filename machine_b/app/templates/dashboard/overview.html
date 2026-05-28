@@ -267,13 +267,15 @@
     const dailyViewerTrendData = {{ overview.daily_viewer_trend | tojson }};
     const genderDistributionData = {{ overview.gender_distribution | tojson }};
     const ageDistributionData = {{ overview.age_distribution | tojson }};
-    const ageGroupDisplayOrder = ["<18", "18-25", "26-35", "36-50", ">50"];
+    const ageGroupDisplayOrder = ["0-17", "18-25", "26-35", "36-45", "46-54", "55-65", "66-100"];
     const ageGroupColors = [
         "#5b8def",
         "#16c79a",
         "#ff9f43",
         "#ee5253",
-        "#8e44ad"
+        "#8e44ad",
+        "#00a8ff",
+        "#576574"
     ];
 
     function buildLineChart(canvasId, datasetLabel, labels, values, color) {
@@ -363,19 +365,29 @@
                 .trim();
 
             let normalizedLabel = null;
-            if (normalizedKey.includes("<18") || normalizedKey.includes("under18")) {
-                normalizedLabel = "<18";
+            if (
+                normalizedKey.includes("0-17") ||
+                normalizedKey.includes("<18") ||
+                normalizedKey.includes("under18") ||
+                normalizedKey.includes("duoi18")
+            ) {
+                normalizedLabel = "0-17";
             } else if (normalizedKey.includes("18-25")) {
                 normalizedLabel = "18-25";
             } else if (normalizedKey.includes("26-35")) {
                 normalizedLabel = "26-35";
+            } else if (normalizedKey.includes("36-45")) {
+                normalizedLabel = "36-45";
+            } else if (normalizedKey.includes("46-54")) {
+                normalizedLabel = "46-54";
+            } else if (normalizedKey.includes("55-65")) {
+                normalizedLabel = "55-65";
             } else if (
-                normalizedKey.includes("36-45") ||
-                normalizedKey.includes("36-50")
+                normalizedKey.includes("66-100") ||
+                normalizedKey.includes(">65") ||
+                normalizedKey.includes("over65")
             ) {
-                normalizedLabel = "36-50";
-            } else if (normalizedKey.includes(">50") || normalizedKey.includes("over50")) {
-                normalizedLabel = ">50";
+                normalizedLabel = "66-100";
             }
 
             if (!normalizedLabel) {
