@@ -19,7 +19,7 @@ class AdReportRequest(BaseModel):
     )
 
 class AdReportResponse(BaseModel):
-    ad_play_log_id: int = Field(..., description="ID log cua lan phat quang cao")
+    ad_play_log_id: int = Field(..., ge=0, description="ID log cua lan phat quang cao")
     advertisement_id: int = Field(..., description="ID quang cao")
     total_viewers: int = Field(..., ge=0)
     avg_look_duration: float = Field(..., ge=0)

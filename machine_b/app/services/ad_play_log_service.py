@@ -28,6 +28,17 @@ class AdPlayLogService:
 
         if request.total_viewers != len(request.viewers):
             raise ValueError("total_viewers must be equal to the number of items in viewers")
+
+        if request.total_viewers == 0:
+            return AdReportResponse(
+                ad_play_log_id=0,
+                advertisement_id=request.ad_id,
+                total_viewers=0,
+                avg_look_duration=0.0,
+                dominant_audience_segment_id=None,
+                stats_date=request.start_time.date(),
+                message="ad report skipped because no viewers were detected",
+            )
         
         total_watch_duration = 0.0
         grouped_stats: dict[int, dict[str, float | int]] = defaultdict(
