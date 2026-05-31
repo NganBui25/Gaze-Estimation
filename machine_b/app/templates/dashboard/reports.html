@@ -204,13 +204,15 @@
         "#8e44ad",
         "#20bf6b"
     ];
-    const reportAgeGroupOrder = ["<18", "18-25", "26-35", "36-50", ">50"];
+    const reportAgeGroupOrder = ["0-17", "18-25", "26-35", "36-45", "46-54", "55-65", "66-100"];
     const reportAgeGroupColors = [
         "#4f8cff",
         "#2ecc71",
         "#f39c12",
         "#9b59b6",
-        "#e74c3c"
+        "#e74c3c",
+        "#00a8ff",
+        "#576574"
     ];
 
     function groupReportRowsByDate(rows) {
@@ -243,10 +245,11 @@
             .trim();
 
         if (
+            normalizedLabel.includes("0-17") ||
             normalizedLabel.includes("<18") ||
             normalizedLabel.includes("under 18")
         ) {
-            return "<18";
+            return "0-17";
         }
 
         if (normalizedLabel.includes("18-25")) {
@@ -257,18 +260,24 @@
             return "26-35";
         }
 
-        if (
-            normalizedLabel.includes("36-45") ||
-            normalizedLabel.includes("36-50")
-        ) {
-            return "36-50";
+        if (normalizedLabel.includes("36-45")) {
+            return "36-45";
+        }
+
+        if (normalizedLabel.includes("46-54")) {
+            return "46-54";
+        }
+
+        if (normalizedLabel.includes("55-65")) {
+            return "55-65";
         }
 
         if (
-            normalizedLabel.includes(">50") ||
-            normalizedLabel.includes("over 50")
+            normalizedLabel.includes("66-100") ||
+            normalizedLabel.includes(">65") ||
+            normalizedLabel.includes("over 65")
         ) {
-            return ">50";
+            return "66-100";
         }
 
         return null;

@@ -29,7 +29,23 @@ class AdvertisementService:
 
         return random.choice(advertisements)
 
-    def select_ad(self, avg_age: int, majority_gender: str) -> Advertisement:
+    def get_random_active_ad(self) -> Advertisement:
+        advertisements = self.advertisement_repo.find_active()
+
+        if not advertisements:
+            raise LookupError("no active advertisement found")
+
+        return random.choice(advertisements)
+
+    def select_ad(self, viewer_count: int, avg_age: int, majority_gender: str) -> Advertisement:
+        if viewer_count <= 0:
+            try:
+                category_id = self.category_audience_score_service.get_lowest_average_score_active_category_id()
+            except LookupError:
+                return self.get_random_active_ad()
+
+            return self.get_random_active_ad_by_category_id(category_id)
+
         audience_segment = self.audience_segment_service.get_segment_by_age_and_gender(
             avg_age=avg_age,
             gender=majority_gender,

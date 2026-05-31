@@ -1,6 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.ad_performance_summary import AdPerformanceSummary
+from app.models.advertisement import Advertisement
 from app.models.category_audience_score import CategoryAudienceScore
 
 class CategoryAudienceScoreRepo:
@@ -43,6 +45,45 @@ class CategoryAudienceScoreRepo:
             .limit(1)
         )
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def find_lowest_average_score_active_category_id(self) -> int | None:
+        stmt = (
+            select(
+                CategoryAudienceScore.category_id,
+                func.avg(CategoryAudienceScore.current_score).label("avg_score"),
+            )
+            .join(
+                Advertisement,
+                Advertisement.category_id == CategoryAudienceScore.category_id,
+            )
+            .where(Advertisement.is_active.is_(True))
+            .group_by(CategoryAudienceScore.category_id)
+            .order_by(
+                func.avg(CategoryAudienceScore.current_score).asc(),
+                CategoryAudienceScore.category_id.asc(),
+            )
+            .limit(1)
+        )
+        row = self.db.execute(stmt).first()
+        return None if row is None else int(row.category_id)
+
+    def get_historical_viewer_count(
+        self,
+        category_id: int,
+        audience_segment_id: int,
+    ) -> int:
+        stmt = (
+            select(func.coalesce(func.sum(AdPerformanceSummary.viewer_count), 0))
+            .join(
+                Advertisement,
+                Advertisement.id == AdPerformanceSummary.advertisement_id,
+            )
+            .where(
+                Advertisement.category_id == category_id,
+                AdPerformanceSummary.audience_segment_id == audience_segment_id,
+            )
+        )
+        return int(self.db.execute(stmt).scalar_one() or 0)
     
     def create(self, category_id: int, audience_segment_id: int, initial_score: float, current_score: float):
         category_audience_score = CategoryAudienceScore(

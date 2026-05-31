@@ -5,8 +5,8 @@ from app.repositories.category_audience_score_repo import CategoryAudienceScoreR
 
 
 class CategoryAudienceScoreService:
-    PRIOR_WEIGHT = 10.0
-    MAX_VIEWER_WEIGHT = 5.0
+    MAX_PRIOR_WEIGHT = 100.0
+    MAX_VIEWER_WEIGHT = 20.0
 
     def __init__(self, db: Session):
         self.db = db
@@ -41,6 +41,12 @@ class CategoryAudienceScoreService:
             audience_segment_id=audience_segment_id,
         )
         return best_score.category_id
+
+    def get_lowest_average_score_active_category_id(self) -> int:
+        category_id = self.category_audience_score_repo.find_lowest_average_score_active_category_id()
+        if category_id is None:
+            raise LookupError("no active category audience score found")
+        return category_id
     
     def calculator_actual_score(self, viewer_count: int, total_watch_duration: int, ad_duration_seconds: int,):
         if viewer_count <= 0:
@@ -73,13 +79,21 @@ class CategoryAudienceScoreService:
                 initial_score=0.0,
                 current_score=actual_score,
             )
-        
+
+        historical_viewer_count = self.category_audience_score_repo.get_historical_viewer_count(
+            category_id=category_id,
+            audience_segment_id=audience_segment_id,
+        )
+        prior_weight = min(float(historical_viewer_count), self.MAX_PRIOR_WEIGHT)
         viewer_weight = min(float(viewer_count), self.MAX_VIEWER_WEIGHT)
 
-        new_current_score = (
-             (category_audience_score.current_score * self.PRIOR_WEIGHT)
-            + (actual_score * viewer_weight)
-        ) / (self.PRIOR_WEIGHT + viewer_weight)
+        if prior_weight <= 0:
+            new_current_score = actual_score
+        else:
+            new_current_score = (
+                 (category_audience_score.current_score * prior_weight)
+                + (actual_score * viewer_weight)
+            ) / (prior_weight + viewer_weight)
 
         category_audience_score.current_score = round(new_current_score, 4)
         self.db.flush()

@@ -23,6 +23,14 @@ class AdvertisementRepo:
             .order_by(Advertisement.id.asc())
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def find_active(self) -> list[Advertisement]:
+        stmt = (
+            select(Advertisement)
+            .where(Advertisement.is_active.is_(True))
+            .order_by(Advertisement.id.asc())
+        )
+        return list(self.db.execute(stmt).scalars().all())
     
     def find_active_by_category_id_and_media_filename(
         self,

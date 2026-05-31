@@ -28,6 +28,17 @@ class AdPlayLogService:
 
         if request.total_viewers != len(request.viewers):
             raise ValueError("total_viewers must be equal to the number of items in viewers")
+
+        if request.total_viewers == 0:
+            return AdReportResponse(
+                ad_play_log_id=0,
+                advertisement_id=request.ad_id,
+                total_viewers=0,
+                avg_look_duration=0.0,
+                dominant_audience_segment_id=None,
+                stats_date=request.start_time.date(),
+                message="ad report skipped because no viewers were detected",
+            )
         
         total_watch_duration = 0.0
         grouped_stats: dict[int, dict[str, float | int]] = defaultdict(
@@ -64,20 +75,20 @@ class AdPlayLogService:
             for audience_segment_id, segment_stat in grouped_stats.items():
                 viewer_count_increment = int(segment_stat["viewer_count"])
                 total_watch_duration_increment = float(segment_stat["total_watch_duration"])
-                self.ad_performance_summary_service.update_summary(
-                    advertisement_id=request.ad_id,
-                    audience_segment_id=audience_segment_id,
-                    stats_date=stats_date,
-                    viewer_count_increment=viewer_count_increment,
-                    total_watch_duration_increment=total_watch_duration_increment,
-                )
-
                 self.category_audience_score_service.update_current_score(
                     category_id=advertisement.category_id,
                     audience_segment_id=audience_segment_id,
                     viewer_count=viewer_count_increment,
                     total_watch_duration=total_watch_duration_increment,
                     ad_duration_seconds=advertisement.duration_seconds,
+                )
+
+                self.ad_performance_summary_service.update_summary(
+                    advertisement_id=request.ad_id,
+                    audience_segment_id=audience_segment_id,
+                    stats_date=stats_date,
+                    viewer_count_increment=viewer_count_increment,
+                    total_watch_duration_increment=total_watch_duration_increment,
                 )
 
             self.db.commit()
