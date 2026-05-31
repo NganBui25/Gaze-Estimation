@@ -61,7 +61,7 @@ class ViewerTrack:
             watch_duration += max(0.0, end_ts - self.last_seen_ts)
         return {
             "viewer_id": self.track_id,
-            "estimated_age": None if estimated_age is None else int(round(estimated_age)),
+            "estimated_age": None if estimated_age is None else int(estimated_age),
             "gender": str(gender).strip().lower() if gender is not None else "unknown",
             "start_time": iso_now(self.first_seen_ts),
             "end_time": iso_now(end_ts),

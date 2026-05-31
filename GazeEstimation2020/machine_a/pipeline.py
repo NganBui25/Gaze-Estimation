@@ -20,7 +20,7 @@ def build_selection_payload(tracks, window_start_ts, window_end_ts):
     return {
         "viewer_count": viewer_count,
         "timestamp": iso_now(window_end_ts),
-        "avg_age": 0 if avg_age is None else int(round(avg_age)),
+        "avg_age": 0 if avg_age is None else int(avg_age),
         "majority_gender": majority_gender,
         "window_start": iso_now(window_start_ts),
         "window_end": iso_now(window_end_ts),
