@@ -36,7 +36,7 @@ FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
 FRAME_BUFFERSIZE = 1
 AGE_GENDER_EVERY_N_FRAMES = 10
-AUDIENCE_WINDOW_SECONDS = float(os.getenv("AUDIENCE_WINDOW_SECONDS", "4.0"))
+AUDIENCE_WINDOW_SECONDS = float(os.getenv("AUDIENCE_WINDOW_SECONDS", "5.0"))
 AD_MISSING_FRAME_TIMEOUT = float(os.getenv("AD_MISSING_FRAME_TIMEOUT", "1.5"))
 SENSOR_POLL_INTERVAL = float(os.getenv("SENSOR_POLL_INTERVAL", "0.2"))
 SENSOR_SERIAL_PORT = os.getenv("SENSOR_SERIAL_PORT")
@@ -937,6 +937,7 @@ def main():
     state = "idle"
     selection_start_ts = None
     selection_request = None
+    selection_request_sent = False
     selected_ad = None
     ad_capture = None
     ad_start_ts = None
@@ -954,6 +955,7 @@ def main():
                 state = "idle"
                 selection_start_ts = None
                 selection_request = None
+                selection_request_sent = False
                 selected_ad = None
                 ad_manager.reset()
                 selection_manager.reset()
@@ -1001,6 +1003,7 @@ def main():
                         finalize_ad_session(selected_ad, ad_manager, ad_start_ts, now_ts)
                         state = "idle"
                         selection_start_ts = None
+                        selection_request_sent = False
                         selected_ad = None
                         ad_start_ts = None
                         last_ad_frame_ts = None
@@ -1038,38 +1041,37 @@ def main():
 
             if selection_start_ts is None:
                 selection_start_ts = now_ts
+                selection_request_sent = False
                 selection_manager.reset()
 
             if selection_request is None:
                 selection_manager.update(detections, now_ts)
 
                 elapsed = now_ts - selection_start_ts
-                if elapsed >= AUDIENCE_WINDOW_SECONDS:
+                if elapsed >= AUDIENCE_WINDOW_SECONDS and not selection_request_sent:
                     selection_payload = build_selection_payload(
                         selection_manager.tracks,
                         selection_start_ts,
                         now_ts,
                     )
-                    if selection_payload["viewer_count"] > 0:
-                        selection_request = AdSelectionRequest(SELECT_AD_URL, selection_payload).start()
-                        cv2.putText(
-                            display_frame,
-                            "Selecting next ad...",
-                            (20, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.7,
-                            (0, 255, 255),
-                            2,
-                        )
-                    else:
-                        selection_start_ts = now_ts
-                        selection_manager.reset()
+                    selection_request = AdSelectionRequest(SELECT_AD_URL, selection_payload).start()
+                    selection_request_sent = True
+                    cv2.putText(
+                        display_frame,
+                        "Selecting next ad...",
+                        (20, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
 
             elif selection_request.event.is_set():
                 if selection_request.error is not None:
                     print(f"Ad selection failed: {selection_request.error}")
                     selection_request = None
                     selection_start_ts = now_ts
+                    selection_request_sent = False
                     selection_manager.reset()
                 else:
                     try:
@@ -1082,6 +1084,7 @@ def main():
                         state = "ad"
                         ad_start_ts = now_ts
                         last_ad_frame_ts = None
+                        selection_request_sent = False
                         selection_manager.reset()
                         print(f"Selected ad: {selected_ad}")
                     except Exception as exc:
@@ -1089,6 +1092,7 @@ def main():
                         selected_ad = None
                         selection_request = None
                         selection_start_ts = now_ts
+                        selection_request_sent = False
                         selection_manager.reset()
                 selection_request = None
 

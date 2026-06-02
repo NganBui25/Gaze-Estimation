@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="560" viewBox="0 0 1400 560">
+  <style>
+    .title { font: 700 18px Arial, sans-serif; }
+    .axis { font: 700 14px Arial, sans-serif; }
+    .tick { font: 10px Arial, sans-serif; }
+    .task { font: 12px Arial, sans-serif; }
+    .grid { stroke: #8a8a8a; stroke-width: 1; opacity: 0.38; }
+    .border { stroke: #555; stroke-width: 1.4; fill: none; }
+    .block { fill: #b9cbe2; stroke: #6f7f91; stroke-width: 1.3; }
+    .label-bg { fill: #fff; stroke: #b7b7b7; stroke-width: 0.8; opacity: 0.9; }
+  </style>
+
+  <rect x="0" y="0" width="1400" height="560" fill="#fff"/>
+  <text x="700" y="28" text-anchor="middle" class="title">BIỂU ĐỒ PHỤ TẢI NGUỒN NHÂN LỰC</text>
+
+  <!-- Plot area: x=70..1330 maps time 0..45; y=450..50 maps manpower 0..4 -->
+  <rect x="70" y="50" width="1260" height="400" class="border"/>
+
+  <!-- Vertical day grid and x labels -->
+  <g>
+    <line x1="70" y1="50" x2="70" y2="450" class="grid"/><text x="70" y="470" text-anchor="middle" class="tick">0</text>
+    <line x1="98" y1="50" x2="98" y2="450" class="grid"/><text x="98" y="470" text-anchor="middle" class="tick">1</text>
+    <line x1="126" y1="50" x2="126" y2="450" class="grid"/><text x="126" y="470" text-anchor="middle" class="tick">2</text>
+    <line x1="154" y1="50" x2="154" y2="450" class="grid"/><text x="154" y="470" text-anchor="middle" class="tick">3</text>
+    <line x1="182" y1="50" x2="182" y2="450" class="grid"/><text x="182" y="470" text-anchor="middle" class="tick">4</text>
+    <line x1="210" y1="50" x2="210" y2="450" class="grid"/><text x="210" y="470" text-anchor="middle" class="tick">5</text>
+    <line x1="238" y1="50" x2="238" y2="450" class="grid"/><text x="238" y="470" text-anchor="middle" class="tick">6</text>
+    <line x1="266" y1="50" x2="266" y2="450" class="grid"/><text x="266" y="470" text-anchor="middle" class="tick">7</text>
+    <line x1="294" y1="50" x2="294" y2="450" class="grid"/><text x="294" y="470" text-anchor="middle" class="tick">8</text>
+    <line x1="322" y1="50" x2="322" y2="450" class="grid"/><text x="322" y="470" text-anchor="middle" class="tick">9</text>
+    <line x1="350" y1="50" x2="350" y2="450" class="grid"/><text x="350" y="470" text-anchor="middle" class="tick">10</text>
+    <line x1="378" y1="50" x2="378" y2="450" class="grid"/><text x="378" y="470" text-anchor="middle" class="tick">11</text>
+    <line x1="406" y1="50" x2="406" y2="450" class="grid"/><text x="406" y="470" text-anchor="middle" class="tick">12</text>
+    <line x1="434" y1="50" x2="434" y2="450" class="grid"/><text x="434" y="470" text-anchor="middle" class="tick">13</text>
+    <line x1="462" y1="50" x2="462" y2="450" class="grid"/><text x="462" y="470" text-anchor="middle" class="tick">14</text>
+    <line x1="490" y1="50" x2="490" y2="450" class="grid"/><text x="490" y="470" text-anchor="middle" class="tick">15</text>
+    <line x1="518" y1="50" x2="518" y2="450" class="grid"/><text x="518" y="470" text-anchor="middle" class="tick">16</text>
+    <line x1="546" y1="50" x2="546" y2="450" class="grid"/><text x="546" y="470" text-anchor="middle" class="tick">17</text>
+    <line x1="574" y1="50" x2="574" y2="450" class="grid"/><text x="574" y="470" text-anchor="middle" class="tick">18</text>
+    <line x1="602" y1="50" x2="602" y2="450" class="grid"/><text x="602" y="470" text-anchor="middle" class="tick">19</text>
+    <line x1="630" y1="50" x2="630" y2="450" class="grid"/><text x="630" y="470" text-anchor="middle" class="tick">20</text>
+    <line x1="658" y1="50" x2="658" y2="450" class="grid"/><text x="658" y="470" text-anchor="middle" class="tick">21</text>
+    <line x1="686" y1="50" x2="686" y2="450" class="grid"/><text x="686" y="470" text-anchor="middle" class="tick">22</text>
+    <line x1="714" y1="50" x2="714" y2="450" class="grid"/><text x="714" y="470" text-anchor="middle" class="tick">23</text>
+    <line x1="742" y1="50" x2="742" y2="450" class="grid"/><text x="742" y="470" text-anchor="middle" class="tick">24</text>
+    <line x1="770" y1="50" x2="770" y2="450" class="grid"/><text x="770" y="470" text-anchor="middle" class="tick">25</text>
+    <line x1="798" y1="50" x2="798" y2="450" class="grid"/><text x="798" y="470" text-anchor="middle" class="tick">26</text>
+    <line x1="826" y1="50" x2="826" y2="450" class="grid"/><text x="826" y="470" text-anchor="middle" class="tick">27</text>
+    <line x1="854" y1="50" x2="854" y2="450" class="grid"/><text x="854" y="470" text-anchor="middle" class="tick">28</text>
+    <line x1="882" y1="50" x2="882" y2="450" class="grid"/><text x="882" y="470" text-anchor="middle" class="tick">29</text>
+    <line x1="910" y1="50" x2="910" y2="450" class="grid"/><text x="910" y="470" text-anchor="middle" class="tick">30</text>
+    <line x1="938" y1="50" x2="938" y2="450" class="grid"/><text x="938" y="470" text-anchor="middle" class="tick">31</text>
+    <line x1="966" y1="50" x2="966" y2="450" class="grid"/><text x="966" y="470" text-anchor="middle" class="tick">32</text>
+    <line x1="994" y1="50" x2="994" y2="450" class="grid"/><text x="994" y="470" text-anchor="middle" class="tick">33</text>
+    <line x1="1022" y1="50" x2="1022" y2="450" class="grid"/><text x="1022" y="470" text-anchor="middle" class="tick">34</text>
+    <line x1="1050" y1="50" x2="1050" y2="450" class="grid"/><text x="1050" y="470" text-anchor="middle" class="tick">35</text>
+    <line x1="1078" y1="50" x2="1078" y2="450" class="grid"/><text x="1078" y="470" text-anchor="middle" class="tick">36</text>
+    <line x1="1106" y1="50" x2="1106" y2="450" class="grid"/><text x="1106" y="470" text-anchor="middle" class="tick">37</text>
+    <line x1="1134" y1="50" x2="1134" y2="450" class="grid"/><text x="1134" y="470" text-anchor="middle" class="tick">38</text>
+    <line x1="1162" y1="50" x2="1162" y2="450" class="grid"/><text x="1162" y="470" text-anchor="middle" class="tick">39</text>
+    <line x1="1190" y1="50" x2="1190" y2="450" class="grid"/><text x="1190" y="470" text-anchor="middle" class="tick">40</text>
+    <line x1="1218" y1="50" x2="1218" y2="450" class="grid"/><text x="1218" y="470" text-anchor="middle" class="tick">41</text>
+    <line x1="1246" y1="50" x2="1246" y2="450" class="grid"/><text x="1246" y="470" text-anchor="middle" class="tick">42</text>
+    <line x1="1274" y1="50" x2="1274" y2="450" class="grid"/><text x="1274" y="470" text-anchor="middle" class="tick">43</text>
+    <line x1="1302" y1="50" x2="1302" y2="450" class="grid"/><text x="1302" y="470" text-anchor="middle" class="tick">44</text>
+    <line x1="1330" y1="50" x2="1330" y2="450" class="grid"/><text x="1330" y="470" text-anchor="middle" class="tick">45</text>
+  </g>
+
+  <!-- Horizontal y grid and labels -->
+  <g>
+    <line x1="70" y1="450" x2="1330" y2="450" class="grid"/><text x="55" y="454" text-anchor="end" class="tick">0</text>
+    <line x1="70" y1="350" x2="1330" y2="350" class="grid"/><text x="55" y="354" text-anchor="end" class="tick">1</text>
+    <line x1="70" y1="250" x2="1330" y2="250" class="grid"/><text x="55" y="254" text-anchor="end" class="tick">2</text>
+    <line x1="70" y1="150" x2="1330" y2="150" class="grid"/><text x="55" y="154" text-anchor="end" class="tick">3</text>
+    <line x1="70" y1="50" x2="1330" y2="50" class="grid"/><text x="55" y="54" text-anchor="end" class="tick">4</text>
+  </g>
+
+  <text x="700" y="510" text-anchor="middle" class="axis">Thời gian</text>
+  <text x="25" y="250" text-anchor="middle" class="axis" transform="rotate(-90 25 250)">Số nhân lực</text>
+
+  <!-- Resource blocks -->
+  <g>
+    <rect x="70" y="350" width="28" height="100" class="block"/><rect x="80" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="89" y="404" text-anchor="middle" class="task">A2</text>
+    <rect x="70" y="150" width="28" height="200" class="block"/><rect x="80" y="241" width="18" height="18" rx="2" class="label-bg"/><text x="89" y="254" text-anchor="middle" class="task">A1</text>
+    <rect x="98" y="250" width="28" height="200" class="block"/><rect x="108" y="341" width="18" height="18" rx="2" class="label-bg"/><text x="117" y="354" text-anchor="middle" class="task">A3</text>
+    <rect x="126" y="250" width="84" height="200" class="block"/><rect x="159" y="341" width="18" height="18" rx="2" class="label-bg"/><text x="168" y="354" text-anchor="middle" class="task">B1</text>
+    <rect x="238" y="350" width="56" height="100" class="block"/><rect x="257" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="266" y="404" text-anchor="middle" class="task">B2</text>
+    <rect x="294" y="350" width="56" height="100" class="block"/><rect x="313" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="322" y="404" text-anchor="middle" class="task">B3</text>
+    <rect x="350" y="350" width="56" height="100" class="block"/><rect x="369" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="378" y="404" text-anchor="middle" class="task">B4</text>
+    <rect x="350" y="250" width="56" height="100" class="block"/><rect x="369" y="291" width="18" height="18" rx="2" class="label-bg"/><text x="378" y="304" text-anchor="middle" class="task">B5</text>
+    <rect x="406" y="150" width="84" height="300" class="block"/><rect x="439" y="291" width="18" height="18" rx="2" class="label-bg"/><text x="448" y="304" text-anchor="middle" class="task">C1</text>
+    <rect x="490" y="350" width="84" height="100" class="block"/><rect x="523" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="532" y="404" text-anchor="middle" class="task">C2</text>
+    <rect x="490" y="250" width="84" height="100" class="block"/><rect x="523" y="291" width="18" height="18" rx="2" class="label-bg"/><text x="532" y="304" text-anchor="middle" class="task">C4</text>
+    <rect x="490" y="150" width="84" height="100" class="block"/><rect x="523" y="191" width="18" height="18" rx="2" class="label-bg"/><text x="532" y="204" text-anchor="middle" class="task">D1</text>
+    <rect x="574" y="250" width="112" height="200" class="block"/><rect x="621" y="341" width="18" height="18" rx="2" class="label-bg"/><text x="630" y="354" text-anchor="middle" class="task">D2</text>
+    <rect x="686" y="350" width="56" height="100" class="block"/><rect x="705" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="714" y="404" text-anchor="middle" class="task">E1</text>
+    <rect x="686" y="150" width="112" height="200" class="block"/><rect x="733" y="241" width="18" height="18" rx="2" class="label-bg"/><text x="742" y="254" text-anchor="middle" class="task">C3</text>
+    <rect x="798" y="350" width="140" height="100" class="block"/><rect x="859" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="868" y="404" text-anchor="middle" class="task">D3</text>
+    <rect x="798" y="250" width="140" height="100" class="block"/><rect x="859" y="291" width="18" height="18" rx="2" class="label-bg"/><text x="868" y="304" text-anchor="middle" class="task">D4</text>
+    <rect x="938" y="350" width="56" height="100" class="block"/><rect x="957" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="966" y="404" text-anchor="middle" class="task">E2</text>
+    <rect x="994" y="250" width="112" height="200" class="block"/><rect x="1041" y="341" width="18" height="18" rx="2" class="label-bg"/><text x="1050" y="354" text-anchor="middle" class="task">D5</text>
+    <rect x="1106" y="350" width="56" height="100" class="block"/><rect x="1125" y="391" width="18" height="18" rx="2" class="label-bg"/><text x="1134" y="404" text-anchor="middle" class="task">E3</text>
+    <rect x="1162" y="250" width="140" height="200" class="block"/><rect x="1223" y="341" width="18" height="18" rx="2" class="label-bg"/><text x="1232" y="354" text-anchor="middle" class="task">F1</text>
+    <rect x="1302" y="250" width="28" height="200" class="block"/><rect x="1311" y="341" width="18" height="18" rx="2" class="label-bg"/><text x="1320" y="354" text-anchor="middle" class="task">F2</text>
+  </g>
+</svg>
