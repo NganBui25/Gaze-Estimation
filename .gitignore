@@ -13,6 +13,7 @@ __pycache__/
 # Datasets and Large Files
 MyDataSet/
 *.zip
+GazeEstimation2020/ads/
 
 # Documents (Tùy chọn: bỏ dòng này đi nếu bạn muốn đưa file docx lên)
 *.docx

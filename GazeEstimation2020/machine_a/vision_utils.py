@@ -180,7 +180,7 @@ def predict_pupil(pupil_model, device, eyes, ow=160, oh=96):
     return result
 
 
-def build_face_bbox(full_mp_shape, frame_width, frame_height, pad_ratio=0.15):
+def build_face_bbox(full_mp_shape, frame_width, frame_height, pad_ratio=0.30):
     x_min, y_min = np.min(full_mp_shape, axis=0)
     x_max, y_max = np.max(full_mp_shape, axis=0)
 

@@ -9,6 +9,8 @@ from machine_a.config import (
     AD_WINDOW_NAME,
     AD_WINDOW_WIDTH,
     AUDIENCE_WINDOW_SECONDS,
+    DEMOGRAPHIC_CACHE_TTL_SECONDS,
+    DEMOGRAPHIC_REFRESH_SECONDS,
     FRAME_HEIGHT,
     FRAME_WIDTH,
     PERFORMANCE_MODE,
@@ -23,8 +25,10 @@ from machine_a.config import (
     VIDEO_SOURCE,
 )
 from machine_a.models import load_models
+from machine_a.demographics import DemographicPredictor
 from machine_a.ad import AdSelectionRequest, extract_ad_selection, resolve_media_path
 from machine_a.pipeline import (
+    annotate_detections,
     build_report_payload,
     build_selection_payload,
     collect_viewer_detections,
@@ -41,6 +45,11 @@ def main():
     grabber = LatestFrameGrabber(VIDEO_SOURCE).start()
     setup_windows()
     device, model_x, model_y, pupil_model, age_gender_model, face_landmarker = load_models()
+    demographic_predictor = DemographicPredictor(
+        age_gender_model,
+        refresh_seconds=DEMOGRAPHIC_REFRESH_SECONDS,
+        cache_ttl_seconds=DEMOGRAPHIC_CACHE_TTL_SECONDS,
+    ).start()
     print(f"Performance mode: {PERFORMANCE_MODE} | process every {PROCESS_EVERY_N_FRAMES} frame(s)")
 
     deadline = time.time() + 10.0
@@ -52,6 +61,7 @@ def main():
     else:
         sensor_monitor.stop()
         grabber.release()
+        demographic_predictor.stop()
         raise RuntimeError(
             f"Không nhận được frame từ {VIDEO_SOURCE} trong 10 giây. "
             "Hãy kiểm tra IP Raspberry Pi, port UDP, hoặc biến môi trường VIDEO_SOURCE."
@@ -75,6 +85,7 @@ def main():
     last_ad_frame_ts = None
     last_ad_display_frame = None
     last_tracking_display_frame = create_black_frame(TRACKING_WINDOW_WIDTH, TRACKING_WINDOW_HEIGHT)
+    last_tracking_detections = []
     no_viewer_start_ts = None
     no_viewer_cooldown_start_ts = None
     no_viewer_signal_sent_for_cycle = False
@@ -96,7 +107,7 @@ def main():
                             frame,
                             frame_index,
                             gaze_state,
-                            age_gender_model=age_gender_model,
+                            demographic_predictor=demographic_predictor,
                             pupil_model=pupil_model,
                             device=device,
                             model_x=model_x,
@@ -105,9 +116,13 @@ def main():
                             annotate=True,
                         )
                         ad_manager.update(detections, now_ts)
+                        last_tracking_detections = detections
                         last_tracking_display_frame = tracking_display_frame.copy()
                     else:
-                        tracking_display_frame = last_tracking_display_frame.copy()
+                        tracking_display_frame = annotate_detections(
+                            frame.copy(),
+                            last_tracking_detections,
+                        )
                 else:
                     tracking_display_frame = create_black_frame(TRACKING_WINDOW_WIDTH, TRACKING_WINDOW_HEIGHT)
 
@@ -188,7 +203,10 @@ def main():
                 continue
 
             if not should_process_frame:
-                tracking_display_frame = resize_canvas(frame, TRACKING_WINDOW_WIDTH, TRACKING_WINDOW_HEIGHT)
+                tracking_display_frame = annotate_detections(
+                    frame.copy(),
+                    last_tracking_detections,
+                )
                 cv2.putText(
                     tracking_display_frame,
                     f"Skipping frame ({PERFORMANCE_MODE})",
@@ -210,7 +228,7 @@ def main():
                 frame,
                 frame_index,
                 gaze_state,
-                age_gender_model=age_gender_model,
+                demographic_predictor=demographic_predictor,
                 pupil_model=pupil_model,
                 device=device,
                 model_x=model_x,
@@ -219,6 +237,7 @@ def main():
                 annotate=True,
             )
             has_viewers = len(detections) > 0
+            last_tracking_detections = detections
             last_tracking_display_frame = tracking_display_frame.copy()
 
             if selection_start_ts is None:
@@ -339,6 +358,7 @@ def main():
         if ad_capture is not None:
             ad_capture.release()
         grabber.release()
+        demographic_predictor.stop()
         sensor_monitor.stop()
         cv2.destroyAllWindows()
 

@@ -1,12 +1,13 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import time
 
 from .ad import AdSelectionRequest, extract_ad_selection, resolve_media_path
-from .config import AGE_GENDER_EVERY_N_FRAMES, AD_WINDOW_HEIGHT, AD_WINDOW_WIDTH, AUDIENCE_WINDOW_SECONDS, REPORT_AD_URL
+from .config import AGE_GENDER_EVERY_N_FRAMES, AD_WINDOW_HEIGHT, AD_WINDOW_WIDTH, AUDIENCE_WINDOW_SECONDS, REPORT_AD_URL, VISION_PROCESS_WIDTH
 from .reporting import finalize_attention_session, iso_now, majority_vote, post_json_async, post_json_async_many
 from .tracking import ViewerTrackManager
-from .vision_utils import build_face_bbox, get_mediapipe_landmarks, map_to_dlib_style, predict_age_gender, predict_pupil, segment_eyes
+from .vision_utils import build_face_bbox, get_mediapipe_landmarks, map_to_dlib_style, predict_pupil, segment_eyes
 
 
 def build_selection_payload(tracks, window_start_ts, window_end_ts):
@@ -42,23 +43,82 @@ def build_report_payload(ad_id, tracks, start_ts, end_ts):
     }
 
 
-def collect_viewer_detections(frame, frame_index, gaze_state, *, age_gender_model, pupil_model, device, model_x, model_y, face_landmarker, annotate=True):
+def annotate_detections(display_frame, detections):
+    h, _, _ = display_frame.shape
+    for detection in detections:
+        x1, y1, x2, y2 = detection["bbox"]
+        cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
+
+        gender_label = detection.get("gender_label")
+        age_range = detection.get("age_range")
+        age_range_confidence = detection.get("age_range_confidence")
+        if gender_label is not None and age_range is not None:
+            cv2.putText(
+                display_frame,
+                f"{gender_label} | Age range: {age_range} ({age_range_confidence:.2f})",
+                (x1, max(20, y1 - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (0, 255, 255),
+                2,
+            )
+
+        is_looking_at_screen = detection.get("looking", False)
+        status_text = "Looking" if is_looking_at_screen else "Not looking"
+        status_color = (0, 255, 0) if is_looking_at_screen else (0, 0, 255)
+        cv2.putText(
+            display_frame,
+            status_text,
+            (x1, min(h - 10, y2 + 20)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            status_color,
+            2,
+        )
+    return display_frame
+
+
+def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_predictor, pupil_model, device, model_x, model_y, face_landmarker, annotate=True):
     display_frame = frame.copy()
     detections = []
-    h, w, _ = frame.shape
+    source_h, source_w, _ = frame.shape
+    now_ts = time.time()
 
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    if source_w > VISION_PROCESS_WIDTH:
+        process_scale = VISION_PROCESS_WIDTH / source_w
+        process_h = max(1, int(source_h * process_scale))
+        process_frame = cv2.resize(
+            frame,
+            (VISION_PROCESS_WIDTH, process_h),
+            interpolation=cv2.INTER_AREA,
+        )
+    else:
+        process_frame = frame
+
+    process_h, process_w, _ = process_frame.shape
+    scale_x = source_w / process_w
+    scale_y = source_h / process_h
+
+    rgb_frame = cv2.cvtColor(process_frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
     results = face_landmarker.detect(mp_image)
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray_frame = cv2.cvtColor(process_frame, cv2.COLOR_BGR2GRAY)
 
     if not results.face_landmarks:
         return display_frame, detections
 
     for face_landmarks in results.face_landmarks:
-        full_mp_shape = get_mediapipe_landmarks(face_landmarks, w, h)
+        full_mp_shape = get_mediapipe_landmarks(face_landmarks, process_w, process_h)
         shape = map_to_dlib_style(full_mp_shape)
-        x1, y1, x2, y2 = build_face_bbox(full_mp_shape, w, h)
+        process_x1, process_y1, process_x2, process_y2 = build_face_bbox(
+            full_mp_shape,
+            process_w,
+            process_h,
+        )
+        x1 = max(0, int(process_x1 * scale_x))
+        y1 = max(0, int(process_y1 * scale_y))
+        x2 = min(source_w, int(process_x2 * scale_x))
+        y2 = min(source_h, int(process_y2 * scale_y))
 
         face_crop = frame[y1:y2, x1:x2]
         age_range = None
@@ -66,17 +126,18 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, age_gender_mode
         audience_segment_id = None
         gender_label = None
 
+        prediction = demographic_predictor.get_prediction((x1, y1, x2, y2), now_ts)
+        if prediction is not None:
+            (
+                gender_label,
+                _,
+                age_range,
+                age_range_confidence,
+                audience_segment_id,
+            ) = prediction
+
         if face_crop.size > 0 and frame_index % AGE_GENDER_EVERY_N_FRAMES == 0:
-            try:
-                (
-                    gender_label,
-                    _,
-                    age_range,
-                    age_range_confidence,
-                    audience_segment_id,
-                ) = predict_age_gender(age_gender_model, face_crop)
-            except Exception as exc:
-                print("Age/Gender prediction error:", exc)
+            demographic_predictor.submit((x1, y1, x2, y2), face_crop, now_ts)
 
         is_looking_at_screen = False
         try:
@@ -127,8 +188,16 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, age_gender_mode
                     ) and (screen_y_min < gaze_state["smooth_y"] < screen_y_max)
 
                 if annotate:
-                    cv2.circle(display_frame, center_left, 2, (0, 0, 255), -1)
-                    cv2.circle(display_frame, center_right, 2, (0, 0, 255), -1)
+                    display_center_left = (
+                        int(center_left[0] * scale_x),
+                        int(center_left[1] * scale_y),
+                    )
+                    display_center_right = (
+                        int(center_right[0] * scale_x),
+                        int(center_right[1] * scale_y),
+                    )
+                    cv2.circle(display_frame, display_center_left, 2, (0, 0, 255), -1)
+                    cv2.circle(display_frame, display_center_right, 2, (0, 0, 255), -1)
         except Exception as exc:
             print(f"Gaze prediction error: {exc}")
 
@@ -137,32 +206,14 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, age_gender_mode
                 "bbox": (x1, y1, x2, y2),
                 "audience_segment_id": audience_segment_id,
                 "looking": is_looking_at_screen,
+                "gender_label": gender_label,
+                "age_range": age_range,
+                "age_range_confidence": age_range_confidence,
             }
         )
 
-        if annotate:
-            cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
-            if gender_label is not None and age_range is not None:
-                cv2.putText(
-                    display_frame,
-                    f"{gender_label} | Age range: {age_range} ({age_range_confidence:.2f})",
-                    (x1, max(20, y1 - 10)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.55,
-                    (0, 255, 255),
-                    2,
-                )
-            status_text = "Looking" if is_looking_at_screen else "Not looking"
-            status_color = (0, 255, 0) if is_looking_at_screen else (0, 0, 255)
-            cv2.putText(
-                display_frame,
-                status_text,
-                (x1, min(h - 10, y2 + 20)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
-                status_color,
-                2,
-            )
+    if annotate:
+        annotate_detections(display_frame, detections)
 
     return display_frame, detections
 
