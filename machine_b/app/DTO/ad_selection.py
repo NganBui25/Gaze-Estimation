@@ -1,13 +1,24 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from typing import Optional
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class AdSelectionRequest(BaseModel):
     timestamp: datetime = Field(..., description="Time when Machine A sends audience data")
     viewer_count: int = Field(..., ge=0, description="Number of viewers detected in the sampling window")
-    avg_age: int = Field(..., ge=0, description="Average age of detected viewers")
-    majority_gender: str = Field(..., min_length=1, description="Majority gender of detected viewers")
+    audience_segment_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Dominant audience segment ID detected by Machine A",
+    )
+
+    @model_validator(mode="after")
+    def validate_segment_for_viewers(self):
+        if self.viewer_count > 0 and self.audience_segment_id is None:
+            raise ValueError("audience_segment_id is required when viewer_count is greater than 0")
+        return self
 
 
 class AdSelectionResponse(BaseModel):

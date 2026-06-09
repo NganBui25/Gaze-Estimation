@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,8 @@ from app.services.audience_segment_service import AudienceSegmentService
 from app.services.category_audience_score_service import CategoryAudienceScoreService
 
 class AdPlayLogService:
+    RETENTION_DAYS = 7
+
     def __init__(self, db: Session):
         self.db = db
         self.ad_play_log_repo = AdPlayLogRepo(db)
@@ -17,8 +20,18 @@ class AdPlayLogService:
         self.audience_segment_service = AudienceSegmentService(db)
         self.ad_performance_summary_service = AdPerformanceSummaryService(db)
         self.category_audience_score_service = CategoryAudienceScoreService(db)
+
+    def purge_old_logs(self) -> int:
+        cutoff = datetime.now() - timedelta(days=self.RETENTION_DAYS)
+        deleted_count = self.ad_play_log_repo.delete_older_than(cutoff)
+        self.db.commit()
+        return deleted_count
     
     def create_report(self, request: AdReportRequest):
+        self.ad_play_log_repo.delete_older_than(
+            datetime.now() - timedelta(days=self.RETENTION_DAYS)
+        )
+
         advertisement = self.advertisement_repo.get_by_id(request.ad_id)
         if advertisement is None:
             raise LookupError("advertisement not found")
@@ -30,6 +43,7 @@ class AdPlayLogService:
             raise ValueError("total_viewers must be equal to the number of items in viewers")
 
         if request.total_viewers == 0:
+            self.db.commit()
             return AdReportResponse(
                 ad_play_log_id=0,
                 advertisement_id=request.ad_id,
@@ -50,13 +64,15 @@ class AdPlayLogService:
 
         try: 
             for viewer in request.viewers:
-                audience_segment = self.audience_segment_service.get_segment_by_age_and_gender(
-                    avg_age = viewer.estimated_age,
-                    gender = viewer.gender,
+                total_watch_duration += viewer.watch_duration
+                if viewer.audience_segment_id is None:
+                    continue
+                audience_segment = self.audience_segment_service.get_required_by_id(
+                    viewer.audience_segment_id
                 )
+
                 grouped_stats[audience_segment.id]["viewer_count"] += 1
                 grouped_stats[audience_segment.id]["total_watch_duration"] += viewer.watch_duration
-                total_watch_duration += viewer.watch_duration
 
             avg_look_duration = 0.0
             if request.total_viewers > 0:

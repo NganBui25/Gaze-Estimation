@@ -4,24 +4,28 @@ import numpy as np
 
 from .ad import AdSelectionRequest, extract_ad_selection, resolve_media_path
 from .config import AGE_GENDER_EVERY_N_FRAMES, AD_WINDOW_HEIGHT, AD_WINDOW_WIDTH, AUDIENCE_WINDOW_SECONDS, REPORT_AD_URL
-from .reporting import finalize_attention_session, iso_now, majority_vote, mean_or_none, normalize_gender_for_api, post_json_async, post_json_async_many
+from .reporting import finalize_attention_session, iso_now, majority_vote, post_json_async, post_json_async_many
 from .tracking import ViewerTrackManager
 from .vision_utils import build_face_bbox, get_mediapipe_landmarks, map_to_dlib_style, predict_age_gender, predict_pupil, segment_eyes
 
 
 def build_selection_payload(tracks, window_start_ts, window_end_ts):
     viewer_summaries = [track.summary(session_end_ts=window_end_ts) for track in tracks if track.frames_seen > 0]
-    viewer_count = len(viewer_summaries)
-    avg_age = mean_or_none([viewer["estimated_age"] for viewer in viewer_summaries])
-    majority_gender = normalize_gender_for_api(
-        majority_vote([viewer["gender"] for viewer in viewer_summaries], default="unknown")
+    classified_viewers = [
+        viewer
+        for viewer in viewer_summaries
+        if viewer["audience_segment_id"] is not None
+    ]
+    viewer_count = len(classified_viewers)
+    audience_segment_id = majority_vote(
+        [viewer["audience_segment_id"] for viewer in classified_viewers],
+        default=None,
     )
 
     return {
         "viewer_count": viewer_count,
         "timestamp": iso_now(window_end_ts),
-        "avg_age": 0 if avg_age is None else int(avg_age),
-        "majority_gender": majority_gender,
+        "audience_segment_id": audience_segment_id,
         "window_start": iso_now(window_start_ts),
         "window_end": iso_now(window_end_ts),
     }
@@ -57,12 +61,20 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, age_gender_mode
         x1, y1, x2, y2 = build_face_bbox(full_mp_shape, w, h)
 
         face_crop = frame[y1:y2, x1:x2]
-        estimated_age = None
+        age_range = None
+        age_range_confidence = None
+        audience_segment_id = None
         gender_label = None
 
         if face_crop.size > 0 and frame_index % AGE_GENDER_EVERY_N_FRAMES == 0:
             try:
-                gender_label, _, estimated_age = predict_age_gender(age_gender_model, face_crop)
+                (
+                    gender_label,
+                    _,
+                    age_range,
+                    age_range_confidence,
+                    audience_segment_id,
+                ) = predict_age_gender(age_gender_model, face_crop)
             except Exception as exc:
                 print("Age/Gender prediction error:", exc)
 
@@ -123,18 +135,17 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, age_gender_mode
         detections.append(
             {
                 "bbox": (x1, y1, x2, y2),
-                "estimated_age": estimated_age,
-                "gender": gender_label,
+                "audience_segment_id": audience_segment_id,
                 "looking": is_looking_at_screen,
             }
         )
 
         if annotate:
             cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
-            if gender_label is not None and estimated_age is not None:
+            if gender_label is not None and age_range is not None:
                 cv2.putText(
                     display_frame,
-                    f"{gender_label} | Age: {estimated_age:.1f}",
+                    f"{gender_label} | Age range: {age_range} ({age_range_confidence:.2f})",
                     (x1, max(20, y1 - 10)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.55,

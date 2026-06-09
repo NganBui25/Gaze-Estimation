@@ -1,3 +1,5 @@
+import random
+
 from sqlalchemy.orm import Session
 
 from app.models.category_audience_score import CategoryAudienceScore
@@ -7,6 +9,7 @@ from app.repositories.category_audience_score_repo import CategoryAudienceScoreR
 class CategoryAudienceScoreService:
     MAX_PRIOR_WEIGHT = 100.0
     MAX_VIEWER_WEIGHT = 20.0
+    NO_VIEWER_SCORE_EPSILON = 0.05
 
     def __init__(self, db: Session):
         self.db = db
@@ -47,6 +50,18 @@ class CategoryAudienceScoreService:
         if category_id is None:
             raise LookupError("no active category audience score found")
         return category_id
+
+    def get_weighted_random_low_score_active_category_id(self) -> int:
+        category_scores = self.category_audience_score_repo.find_average_scores_for_active_categories()
+        if not category_scores:
+            raise LookupError("no active category audience score found")
+
+        category_ids = [category_id for category_id, _ in category_scores]
+        weights = [
+            1.0 / (max(avg_score, 0.0) + self.NO_VIEWER_SCORE_EPSILON)
+            for _, avg_score in category_scores
+        ]
+        return random.choices(category_ids, weights=weights, k=1)[0]
     
     def calculator_actual_score(self, viewer_count: int, total_watch_duration: int, ad_duration_seconds: int,):
         if viewer_count <= 0:

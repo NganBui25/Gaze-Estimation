@@ -278,7 +278,7 @@
         "#576574"
     ];
 
-    function buildLineChart(canvasId, datasetLabel, labels, values, color) {
+    function buildLineChart(canvasId, datasetLabel, labels, values, color, xAxisTitle, yAxisTitle) {
         const element = document.getElementById(canvasId);
         if (!element) return;
 
@@ -309,12 +309,20 @@
                 },
                 scales: {
                     x: {
+                        title: {
+                            display: true,
+                            text: xAxisTitle
+                        },
                         grid: {
                             display: false
                         }
                     },
                     y: {
-                        beginAtZero: true
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: yAxisTitle
+                        }
                     }
                 }
             }
@@ -406,7 +414,7 @@
         };
     }
 
-    function buildBarChart(canvasId, labels, values) {
+    function buildBarChart(canvasId, labels, values, xAxisTitle, yAxisTitle) {
         const element = document.getElementById(canvasId);
         if (!element) return;
 
@@ -427,6 +435,10 @@
                 responsive: true,
                 scales: {
                     x: {
+                        title: {
+                            display: true,
+                            text: xAxisTitle
+                        },
                         ticks: {
                             maxRotation: 0,
                             minRotation: 0,
@@ -437,6 +449,10 @@
                     },
                     y: {
                         beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: yAxisTitle
+                        },
                         ticks: {
                             stepSize: 1,
                             precision: 0,
@@ -467,7 +483,9 @@
         "Play Count",
         dailyPlayTrendData.map(item => item.date),
         dailyPlayTrendData.map(item => item.play_count),
-        "#ff7a59"
+        "#ff7a59",
+        "Date",
+        "Play Count"
     );
 
     buildLineChart(
@@ -475,7 +493,9 @@
         "Viewer Count",
         dailyViewerTrendData.map(item => item.date),
         dailyViewerTrendData.map(item => item.viewer_count),
-        "#16c79a"
+        "#16c79a",
+        "Date",
+        "Viewer Count"
     );
 
     buildDoughnutChart(
@@ -489,7 +509,9 @@
     buildBarChart(
         "ageDistributionChart",
         normalizedAgeDistribution.labels,
-        normalizedAgeDistribution.values
+        normalizedAgeDistribution.values,
+        "Age Group",
+        "Viewer Count"
     );
 </script>
 {% endblock %}

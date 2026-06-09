@@ -22,8 +22,7 @@ def select_ad(request: AdSelectionRequest, db: Session = Depends(get_db)):
     try:
         advertisement = advertisement_service.select_ad(
             viewer_count=request.viewer_count,
-            avg_age=request.avg_age,
-            majority_gender=request.majority_gender
+            audience_segment_id=request.audience_segment_id,
         )
     except ValueError as exc:
         raise HTTPException(

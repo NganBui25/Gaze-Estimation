@@ -1,0 +1,5 @@
+# Install after the base requirements.txt dependencies.
+# Newer MediaPipe is required because TensorFlow 2.21 needs protobuf >= 6.31.1.
+mediapipe==0.10.35
+protobuf==7.35.0
+tensorflow==2.21.0

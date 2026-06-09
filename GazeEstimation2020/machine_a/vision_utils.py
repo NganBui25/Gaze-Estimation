@@ -10,31 +10,33 @@ from utils.eye_prediction import EyePrediction
 from utils.eye_sample import EyeSample
 
 from .config import (
-    AGE_GENDER_EVERY_N_FRAMES,
-    AGE_GENDER_MODEL_PATH,
-    APP_DIR,
-    AD_MEDIA_ROOT,
-    FACE_LANDMARKER_MODEL_PATH,
-    FRAME_HEIGHT,
-    FRAME_WIDTH,
-    GAZE_MODEL_X_PATH,
-    GAZE_MODEL_Y_PATH,
+    AGE_RANGES,
+    AGE_RANGE_NAMES,
+    AUDIENCE_SEGMENT_IDS,
     GENDER_THRESHOLD,
     IMG_SIZE,
-    MAX_AGE,
-    PUPIL_MODEL_PATH,
-    ROOT_DIR,
 )
-from .reporting import majority_vote, mean_or_none, normalize_gender_for_api, iso_now, post_json_async
 
 
 def gender_from_prob(prob):
     return "Female" if prob >= GENDER_THRESHOLD else "Male"
 
 
-def coral_logits_to_age_np(logits):
-    probs = 1.0 / (1.0 + np.exp(-logits))
-    return probs.sum(axis=-1)
+def age_distribution_to_range_probs(age_probs):
+    age_probs = np.asarray(age_probs, dtype=np.float32).reshape(-1)
+    range_probs = np.array(
+        [age_probs[low:high + 1].sum() for low, high in AGE_RANGES],
+        dtype=np.float32,
+    )
+    total = float(range_probs.sum())
+    if total > 0:
+        range_probs /= total
+    return range_probs
+
+
+def audience_segment_id_for_prediction(gender, age_range):
+    normalized_gender = str(gender).strip().lower()
+    return AUDIENCE_SEGMENT_IDS.get(normalized_gender, {}).get(age_range)
 
 
 def get_mediapipe_landmarks(mesh_landmarks, w, h):
@@ -59,8 +61,14 @@ def map_to_dlib_style(mp_shape):
 
 def preprocess_face_for_inference(face_bgr, img_size=IMG_SIZE):
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    face_rgb = cv2.resize(face_rgb, (img_size, img_size))
-    face_rgb = face_rgb.astype(np.float32)
+    height, width = face_rgb.shape[:2]
+    size = max(height, width)
+    padded = np.zeros((size, size, 3), dtype=face_rgb.dtype)
+    top = (size - height) // 2
+    left = (size - width) // 2
+    padded[top:top + height, left:left + width] = face_rgb
+    face_rgb = cv2.resize(padded, (img_size, img_size), interpolation=cv2.INTER_AREA)
+    face_rgb = face_rgb.astype(np.float32) / 255.0
     face_rgb = np.expand_dims(face_rgb, axis=0)
     return face_rgb
 
@@ -69,17 +77,25 @@ def predict_age_gender(model, face_bgr):
     input_img = preprocess_face_for_inference(face_bgr, IMG_SIZE)
     preds = model.predict(input_img, verbose=0)
 
-    if isinstance(preds, dict):
-        pred_gender = preds["gender_output"]
-        pred_age = preds["age_output"]
-    else:
-        pred_gender, pred_age = preds
+    if not isinstance(preds, dict):
+        raise ValueError("Age/gender model must return named output tensors")
 
+    pred_gender = preds["gender_output"]
+    age_distribution = preds["age_distribution_output"].reshape(-1)
     gender_prob = float(pred_gender[0][0])
-    age_pred = float(coral_logits_to_age_np(pred_age)[0])
-    age_pred = max(0.0, min(age_pred, float(MAX_AGE)))
     gender_label = gender_from_prob(gender_prob)
-    return gender_label, gender_prob, age_pred
+    range_probs = age_distribution_to_range_probs(age_distribution)
+    age_range_index = int(np.argmax(range_probs))
+    age_range = AGE_RANGE_NAMES[age_range_index]
+    age_range_confidence = float(range_probs[age_range_index])
+    audience_segment_id = audience_segment_id_for_prediction(gender_label, age_range)
+    return (
+        gender_label,
+        gender_prob,
+        age_range,
+        age_range_confidence,
+        audience_segment_id,
+    )
 
 
 def segment_eyes(frame, landmarks, ow=160, oh=96):

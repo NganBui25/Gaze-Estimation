@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from .config import TRACK_MATCH_IOU_THRESHOLD
-from .reporting import iso_now, mean_or_none, majority_vote
+from .reporting import iso_now, majority_vote
 
 
 def bbox_iou(box_a, box_b):
@@ -27,21 +27,18 @@ class ViewerTrack:
     bbox: tuple
     first_seen_ts: float
     last_seen_ts: float
-    age_samples: list = field(default_factory=list)
-    gender_samples: list = field(default_factory=list)
+    audience_segment_samples: list = field(default_factory=list)
     looking_samples: list = field(default_factory=list)
     looking_duration_total: float = 0.0
     frames_seen: int = 0
 
-    def update(self, bbox, age_value, gender_value, looking_value, timestamp):
+    def update(self, bbox, audience_segment_id, looking_value, timestamp):
         previous_seen_ts = self.last_seen_ts
         self.bbox = bbox
         self.last_seen_ts = timestamp
         self.frames_seen += 1
-        if age_value is not None:
-            self.age_samples.append(float(age_value))
-        if gender_value is not None:
-            self.gender_samples.append(gender_value)
+        if audience_segment_id is not None:
+            self.audience_segment_samples.append(int(audience_segment_id))
         if looking_value is not None:
             self.looking_samples.append(bool(looking_value))
             if looking_value and previous_seen_ts is not None:
@@ -49,8 +46,7 @@ class ViewerTrack:
 
     def summary(self, session_end_ts=None):
         end_ts = self.last_seen_ts if session_end_ts is None else session_end_ts
-        estimated_age = mean_or_none(self.age_samples)
-        gender = majority_vote(self.gender_samples)
+        audience_segment_id = majority_vote(self.audience_segment_samples, default=None)
         watch_duration = self.looking_duration_total
         if (
             session_end_ts is not None
@@ -61,8 +57,7 @@ class ViewerTrack:
             watch_duration += max(0.0, end_ts - self.last_seen_ts)
         return {
             "viewer_id": self.track_id,
-            "estimated_age": None if estimated_age is None else int(estimated_age),
-            "gender": str(gender).strip().lower() if gender is not None else "unknown",
+            "audience_segment_id": audience_segment_id,
             "start_time": iso_now(self.first_seen_ts),
             "end_time": iso_now(end_ts),
             "watch_duration": round(watch_duration, 3),
@@ -94,8 +89,7 @@ class ViewerTrackManager:
             if best_index is not None and best_score >= self.iou_threshold:
                 self.tracks[best_index].update(
                     detection["bbox"],
-                    detection.get("estimated_age"),
-                    detection.get("gender"),
+                    detection.get("audience_segment_id"),
                     detection.get("looking"),
                     timestamp,
                 )
@@ -109,8 +103,7 @@ class ViewerTrackManager:
                 )
                 new_track.update(
                     detection["bbox"],
-                    detection.get("estimated_age"),
-                    detection.get("gender"),
+                    detection.get("audience_segment_id"),
                     detection.get("looking"),
                     timestamp,
                 )

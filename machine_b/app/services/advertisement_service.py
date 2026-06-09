@@ -37,23 +37,25 @@ class AdvertisementService:
 
         return random.choice(advertisements)
 
-    def select_ad(self, viewer_count: int, avg_age: int, majority_gender: str) -> Advertisement:
+    def select_ad(self, viewer_count: int, audience_segment_id: int | None) -> Advertisement:
         if viewer_count <= 0:
             try:
-                category_id = self.category_audience_score_service.get_lowest_average_score_active_category_id()
+                category_id = self.category_audience_score_service.get_weighted_random_low_score_active_category_id()
             except LookupError:
                 return self.get_random_active_ad()
 
             return self.get_random_active_ad_by_category_id(category_id)
 
-        audience_segment = self.audience_segment_service.get_segment_by_age_and_gender(
-            avg_age=avg_age,
-            gender=majority_gender,
-        )
+        if audience_segment_id is None:
+            raise ValueError("audience_segment_id is required when viewers are present")
 
-        category_id = self.category_audience_score_service.get_best_category_id_by_audience_segment_id(
-            audience_segment_id=audience_segment.id,
-        )
+        audience_segment = self.audience_segment_service.get_required_by_id(audience_segment_id)
+        try:
+            category_id = self.category_audience_score_service.get_best_category_id_by_audience_segment_id(
+                audience_segment_id=audience_segment.id,
+            )
+        except LookupError:
+            category_id = self.category_audience_score_service.get_weighted_random_low_score_active_category_id()
 
         advertisement = self.get_random_active_ad_by_category_id(
             category_id=category_id,

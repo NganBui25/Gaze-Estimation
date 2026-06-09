@@ -1,4 +1,5 @@
 from datetime import datetime
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 from app.models.ad_play_log import AdPlayLog
 
@@ -20,3 +21,9 @@ class AdPlayLogRepo:
         self.db.add(ad_play_log)
         self.db.flush()
         return ad_play_log
+
+    def delete_older_than(self, cutoff: datetime) -> int:
+        result = self.db.execute(
+            delete(AdPlayLog).where(AdPlayLog.played_at < cutoff)
+        )
+        return int(result.rowcount or 0)

@@ -4,8 +4,11 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 class ViewerReportItem(BaseModel):
-    estimated_age: int = Field(..., ge=0, description="Tuoi uoc luong cua nguoi xem")
-    gender: str = Field(..., min_length=1, description="Gioi tinh cua nguoi xem")
+    audience_segment_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="ID nhom tuoi va gioi tinh cua nguoi xem",
+    )
     watch_duration: float = Field(..., ge=0, description="Thoi gian nhin quang cao")
 
 class AdReportRequest(BaseModel):

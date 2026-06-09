@@ -94,15 +94,8 @@ def load_models():
     pupil_model = pupil_model.to(device)
     pupil_model.eval()
 
-    custom_objects = {
-        "BinaryF1Score": BinaryF1Score,
-        "CoralLoss": CoralLoss,
-        "CoralMAE": CoralMAE,
-    }
-
     age_gender_model = tf.keras.models.load_model(
         AGE_GENDER_MODEL_PATH,
-        custom_objects=custom_objects,
         compile=False,
     )
 

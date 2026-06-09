@@ -67,6 +67,26 @@ class CategoryAudienceScoreRepo:
         row = self.db.execute(stmt).first()
         return None if row is None else int(row.category_id)
 
+    def find_average_scores_for_active_categories(self) -> list[tuple[int, float]]:
+        stmt = (
+            select(
+                CategoryAudienceScore.category_id,
+                func.avg(CategoryAudienceScore.current_score).label("avg_score"),
+            )
+            .join(
+                Advertisement,
+                Advertisement.category_id == CategoryAudienceScore.category_id,
+            )
+            .where(Advertisement.is_active.is_(True))
+            .group_by(CategoryAudienceScore.category_id)
+            .order_by(CategoryAudienceScore.category_id.asc())
+        )
+        rows = self.db.execute(stmt).all()
+        return [
+            (int(row.category_id), float(row.avg_score or 0.0))
+            for row in rows
+        ]
+
     def get_historical_viewer_count(
         self,
         category_id: int,

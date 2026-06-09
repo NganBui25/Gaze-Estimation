@@ -221,15 +221,16 @@ def main():
             has_viewers = len(detections) > 0
             last_tracking_display_frame = tracking_display_frame.copy()
 
-            if has_viewers and selection_start_ts is None:
+            if selection_start_ts is None:
                 selection_start_ts = now_ts
                 selection_manager.reset()
                 no_viewer_cooldown_start_ts = None
                 no_viewer_signal_sent_for_cycle = False
 
-            if has_viewers and selection_request is None:
+            if has_viewers:
                 selection_manager.update(detections, now_ts)
 
+            if selection_request is None:
                 elapsed = now_ts - selection_start_ts
                 if elapsed >= AUDIENCE_WINDOW_SECONDS:
                     selection_payload = build_selection_payload(
@@ -237,52 +238,25 @@ def main():
                         selection_start_ts,
                         now_ts,
                     )
-                    if selection_payload["viewer_count"] > 0:
-                        selection_request = AdSelectionRequest(
-                            SELECT_AD_URL,
-                            selection_payload,
-                            selection_generation_id,
-                        ).start()
-                        cv2.putText(
-                            tracking_display_frame,
-                            "Selecting next ad...",
-                            (20, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.7,
-                            (0, 255, 255),
-                            2,
-                        )
-                    else:
-                        selection_start_ts = now_ts
-                        selection_manager.reset()
-
-            if not has_viewers:
-                if no_viewer_cooldown_start_ts is not None and not no_viewer_signal_sent_for_cycle:
-                    elapsed = now_ts - no_viewer_cooldown_start_ts
-                    if elapsed >= NO_VIEWER_SIGNAL_DELAY_SECONDS:
-                        no_viewer_start_ts = no_viewer_cooldown_start_ts
-                        selection_payload = build_selection_payload(
-                            [],
-                            no_viewer_start_ts,
-                            now_ts,
-                        )
-                        no_viewer_signal_request = AdSelectionRequest(
-                            SELECT_AD_URL,
-                            selection_payload,
-                            selection_generation_id,
-                        ).start()
-                        no_viewer_signal_sent_for_cycle = True
-                        cv2.putText(
-                            tracking_display_frame,
-                            "No viewers - signaling machine B...",
-                            (20, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.7,
-                            (0, 255, 255),
-                            2,
-                        )
-            else:
-                no_viewer_start_ts = None
+                    selection_request = AdSelectionRequest(
+                        SELECT_AD_URL,
+                        selection_payload,
+                        selection_generation_id,
+                    ).start()
+                    status_text = (
+                        "Selecting next ad..."
+                        if selection_payload["viewer_count"] > 0
+                        else "No viewers - selecting fallback ad..."
+                    )
+                    cv2.putText(
+                        tracking_display_frame,
+                        status_text,
+                        (20, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
 
             if no_viewer_signal_request is not None and no_viewer_signal_request.event.is_set():
                 if no_viewer_signal_request.error is not None:
@@ -309,10 +283,6 @@ def main():
 
             if selection_request is not None and selection_request.event.is_set():
                 if selection_request.generation_id != selection_generation_id:
-                    selection_request = None
-                    selection_start_ts = None
-                    selection_manager.reset()
-                elif not has_viewers:
                     selection_request = None
                     selection_start_ts = None
                     selection_manager.reset()

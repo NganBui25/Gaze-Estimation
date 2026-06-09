@@ -11,18 +11,6 @@ class AudienceSegmentRepo:
         stmt = select(AudienceSegment).where(AudienceSegment.id == segment_id)
         return self.db.execute(stmt).scalar_one_or_none()
     
-    def find_by_age_and_gender(self, avg_age: int, gender: str):
-        stmt = (
-            select(AudienceSegment)
-            .where(
-                AudienceSegment.gender == gender,
-                AudienceSegment.age_min <= avg_age,
-                AudienceSegment.age_max >= avg_age,
-            )
-            .limit(1)
-        )
-        return self.db.execute(stmt).scalar_one_or_none()
-    
     def find_all_by_gender(self, gender: str) -> list[AudienceSegment]:
         stmt = (
             select(AudienceSegment)
