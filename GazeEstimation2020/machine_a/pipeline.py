@@ -4,10 +4,35 @@ import numpy as np
 import time
 
 from .ad import AdSelectionRequest, extract_ad_selection, resolve_media_path
-from .config import AGE_GENDER_EVERY_N_FRAMES, AD_WINDOW_HEIGHT, AD_WINDOW_WIDTH, AUDIENCE_WINDOW_SECONDS, REPORT_AD_URL, VISION_PROCESS_WIDTH
+from .config import (
+    AGE_GENDER_EVERY_N_FRAMES,
+    AD_WINDOW_HEIGHT,
+    AD_WINDOW_WIDTH,
+    AUDIENCE_WINDOW_SECONDS,
+    GAZE_MAX_ABS_PITCH_DEG,
+    GAZE_MAX_ABS_YAW_DEG,
+    GAZE_MAX_PITCH_DISAGREEMENT_DEG,
+    GAZE_MIN_EYE_WIDTH_PX,
+    GAZE_PITCH_MAX,
+    GAZE_PITCH_MIN,
+    GAZE_YAW_MAX,
+    GAZE_YAW_MIN,
+    REPORT_AD_URL,
+    VISION_PROCESS_WIDTH,
+)
 from .reporting import finalize_attention_session, iso_now, majority_vote, post_json_async, post_json_async_many
 from .tracking import ViewerTrackManager
-from .vision_utils import build_face_bbox, get_mediapipe_landmarks, map_to_dlib_style, predict_pupil, segment_eyes
+from .vision_utils import (
+    MP_LEFT_EYE,
+    MP_RIGHT_EYE,
+    build_face_bbox,
+    eye_points_7,
+    get_mediapipe_landmarks,
+    map_to_dlib_style,
+    predict_gaze_degrees,
+    predict_pupil,
+    segment_eyes,
+)
 
 
 def build_selection_payload(tracks, window_start_ts, window_end_ts):
@@ -64,8 +89,16 @@ def annotate_detections(display_frame, detections):
             )
 
         is_looking_at_screen = detection.get("looking", False)
-        status_text = "Looking" if is_looking_at_screen else "Not looking"
-        status_color = (0, 255, 0) if is_looking_at_screen else (0, 0, 255)
+        if is_looking_at_screen is None:
+            status_text = "Gaze unavailable"
+            status_color = (0, 165, 255)
+        else:
+            status_text = "Looking" if is_looking_at_screen else "Not looking"
+            status_color = (0, 255, 0) if is_looking_at_screen else (0, 0, 255)
+        yaw = detection.get("yaw")
+        pitch = detection.get("pitch")
+        if yaw is not None and pitch is not None:
+            status_text += f" | yaw={yaw:.1f} pitch={pitch:.1f}"
         cv2.putText(
             display_frame,
             status_text,
@@ -78,7 +111,7 @@ def annotate_detections(display_frame, detections):
     return display_frame
 
 
-def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_predictor, pupil_model, device, model_x, model_y, face_landmarker, annotate=True):
+def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_predictor, pupil_model, device, gaze_model, face_landmarker, annotate=True):
     display_frame = frame.copy()
     detections = []
     source_h, source_w, _ = frame.shape
@@ -139,7 +172,9 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_pre
         if face_crop.size > 0 and frame_index % AGE_GENDER_EVERY_N_FRAMES == 0:
             demographic_predictor.submit((x1, y1, x2, y2), face_crop, now_ts)
 
-        is_looking_at_screen = False
+        is_looking_at_screen = None
+        smooth_yaw = None
+        smooth_pitch = None
         try:
             eye_samples = segment_eyes(gray_frame, shape)
             pupil_predicts = predict_pupil(pupil_model, device, eye_samples)
@@ -151,41 +186,47 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_pre
                 center_left = tuple(left_eyes[0].landmarks[0].astype(int))
                 center_right = tuple(right_eyes[0].landmarks[0].astype(int))
 
-                norm_right = np.linalg.norm(shape[36] - shape[39])
-                norm_left = np.linalg.norm(shape[42] - shape[45])
+                norm_right = float(
+                    np.linalg.norm(
+                        full_mp_shape[MP_RIGHT_EYE["inner"]]
+                        - full_mp_shape[MP_RIGHT_EYE["outer"]]
+                    )
+                )
+                norm_left = float(
+                    np.linalg.norm(
+                        full_mp_shape[MP_LEFT_EYE["inner"]]
+                        - full_mp_shape[MP_LEFT_EYE["outer"]]
+                    )
+                )
 
-                if norm_right > 0 and norm_left > 0:
-                    look_x_r = model_x.predict(
-                        ((np.vstack([shape[36:42], center_right]) - shape[36]) / norm_right).reshape(1, -1)
-                    )[0]
-                    look_y_r = model_y.predict(
-                        np.append(
-                            ((np.vstack([shape[36:42], center_right]) - shape[36]) / norm_right).reshape(1, -1).flatten(),
-                            look_x_r,
-                        ).reshape(1, -1)
-                    )[0]
+                if norm_right >= GAZE_MIN_EYE_WIDTH_PX and norm_left >= GAZE_MIN_EYE_WIDTH_PX:
+                    points_right = eye_points_7(full_mp_shape, MP_RIGHT_EYE, center_right)
+                    points_left = eye_points_7(full_mp_shape, MP_LEFT_EYE, center_left)
+                    yaw_right, pitch_right = predict_gaze_degrees(gaze_model, points_right)
+                    yaw_left, pitch_left = predict_gaze_degrees(gaze_model, points_left)
 
-                    look_x_l = model_x.predict(
-                        ((np.vstack([shape[42:48], center_left]) - shape[42]) / norm_left).reshape(1, -1)
-                    )[0]
-                    look_y_l = model_y.predict(
-                        np.append(
-                            ((np.vstack([shape[42:48], center_left]) - shape[42]) / norm_left).reshape(1, -1).flatten(),
-                            look_x_l,
-                        ).reshape(1, -1)
-                    )[0]
+                    # Horizontal eye angles can legitimately have opposite signs
+                    # because both eyes converge toward the same nearby target.
+                    pitch_disagreement = abs(pitch_right - pitch_left)
+                    avg_yaw = (yaw_right + yaw_left) / 2.0
+                    avg_pitch = (pitch_right + pitch_left) / 2.0
 
-                    avg_raw_x = (float(look_x_r) + float(look_x_l)) / 2.0
-                    avg_raw_y = (float(look_y_r) + float(look_y_l)) / 2.0
-
-                    gaze_state["smooth_x"] = 0.2 * avg_raw_x + 0.8 * gaze_state["smooth_x"]
-                    gaze_state["smooth_y"] = 0.2 * avg_raw_y + 0.8 * gaze_state["smooth_y"]
-
-                    screen_x_min, screen_x_max = -0.5, 0.5
-                    screen_y_min, screen_y_max = -0.15, 0.8
-                    is_looking_at_screen = (
-                        screen_x_min < gaze_state["smooth_x"] < screen_x_max
-                    ) and (screen_y_min < gaze_state["smooth_y"] < screen_y_max)
+                    gaze_is_plausible = (
+                        pitch_disagreement <= GAZE_MAX_PITCH_DISAGREEMENT_DEG
+                        and abs(avg_yaw) <= GAZE_MAX_ABS_YAW_DEG
+                        and abs(avg_pitch) <= GAZE_MAX_ABS_PITCH_DEG
+                    )
+                    if gaze_is_plausible:
+                        smooth_yaw, smooth_pitch = gaze_state.update(
+                            (x1, y1, x2, y2),
+                            avg_yaw,
+                            avg_pitch,
+                            now_ts,
+                        )
+                        is_looking_at_screen = (
+                            GAZE_YAW_MIN < smooth_yaw < GAZE_YAW_MAX
+                            and GAZE_PITCH_MIN < smooth_pitch < GAZE_PITCH_MAX
+                        )
 
                 if annotate:
                     display_center_left = (
@@ -206,6 +247,8 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_pre
                 "bbox": (x1, y1, x2, y2),
                 "audience_segment_id": audience_segment_id,
                 "looking": is_looking_at_screen,
+                "yaw": smooth_yaw,
+                "pitch": smooth_pitch,
                 "gender_label": gender_label,
                 "age_range": age_range,
                 "age_range_confidence": age_range_confidence,

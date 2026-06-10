@@ -1,6 +1,11 @@
 from dataclasses import dataclass, field
 
-from .config import TRACK_MATCH_IOU_THRESHOLD
+from .config import (
+    GAZE_EMA_ALPHA,
+    GAZE_STATE_IOU_THRESHOLD,
+    GAZE_STATE_TTL_SECONDS,
+    TRACK_MATCH_IOU_THRESHOLD,
+)
 from .reporting import iso_now, majority_vote
 
 
@@ -21,6 +26,54 @@ def bbox_iou(box_a, box_b):
     return inter_area / max(area_a + area_b - inter_area, 1.0)
 
 
+class GazeStateManager:
+    def __init__(
+        self,
+        *,
+        iou_threshold=GAZE_STATE_IOU_THRESHOLD,
+        ttl_seconds=GAZE_STATE_TTL_SECONDS,
+        alpha=GAZE_EMA_ALPHA,
+    ):
+        self.iou_threshold = iou_threshold
+        self.ttl_seconds = ttl_seconds
+        self.alpha = alpha
+        self.entries = []
+
+    def update(self, bbox, yaw, pitch, timestamp):
+        self.entries = [
+            entry
+            for entry in self.entries
+            if timestamp - entry["updated_at"] <= self.ttl_seconds
+        ]
+        entry = self._find_best_match(bbox)
+        if entry is None:
+            entry = {
+                "bbox": tuple(bbox),
+                "smooth_yaw": float(yaw),
+                "smooth_pitch": float(pitch),
+                "updated_at": timestamp,
+            }
+            self.entries.append(entry)
+        else:
+            entry["bbox"] = tuple(bbox)
+            entry["smooth_yaw"] = self.alpha * yaw + (1.0 - self.alpha) * entry["smooth_yaw"]
+            entry["smooth_pitch"] = self.alpha * pitch + (1.0 - self.alpha) * entry["smooth_pitch"]
+            entry["updated_at"] = timestamp
+        return entry["smooth_yaw"], entry["smooth_pitch"]
+
+    def _find_best_match(self, bbox):
+        best_entry = None
+        best_score = 0.0
+        for entry in self.entries:
+            score = bbox_iou(entry["bbox"], bbox)
+            if score > best_score:
+                best_score = score
+                best_entry = entry
+        if best_score < self.iou_threshold:
+            return None
+        return best_entry
+
+
 @dataclass
 class ViewerTrack:
     track_id: int
@@ -29,6 +82,7 @@ class ViewerTrack:
     last_seen_ts: float
     audience_segment_samples: list = field(default_factory=list)
     looking_samples: list = field(default_factory=list)
+    last_looking_value: object = None
     looking_duration_total: float = 0.0
     frames_seen: int = 0
 
@@ -41,8 +95,9 @@ class ViewerTrack:
             self.audience_segment_samples.append(int(audience_segment_id))
         if looking_value is not None:
             self.looking_samples.append(bool(looking_value))
-            if looking_value and previous_seen_ts is not None:
+            if looking_value and self.last_looking_value is True and previous_seen_ts is not None:
                 self.looking_duration_total += max(0.0, timestamp - previous_seen_ts)
+        self.last_looking_value = looking_value
 
     def summary(self, session_end_ts=None):
         end_ts = self.last_seen_ts if session_end_ts is None else session_end_ts
@@ -50,8 +105,7 @@ class ViewerTrack:
         watch_duration = self.looking_duration_total
         if (
             session_end_ts is not None
-            and self.looking_samples
-            and self.looking_samples[-1]
+            and self.last_looking_value is True
             and end_ts > self.last_seen_ts
         ):
             watch_duration += max(0.0, end_ts - self.last_seen_ts)

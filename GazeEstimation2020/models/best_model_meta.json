@@ -1,0 +1,33 @@
+{
+  "winner": "MLP",
+  "val_MAE": 2.2195364807912608,
+  "params": {
+    "arch": "d",
+    "activation": "tanh",
+    "alpha": 0.00017672216765651268,
+    "lr_init": 0.00019473835397043003,
+    "batch_size": 256
+  },
+  "feature_cols": [
+    "point_1_x",
+    "point_1_y",
+    "point_2_x",
+    "point_2_y",
+    "point_3_x",
+    "point_3_y",
+    "point_4_x",
+    "point_4_y",
+    "point_5_x",
+    "point_5_y",
+    "point_6_x",
+    "point_6_y",
+    "point_7_x",
+    "point_7_y"
+  ],
+  "targets": [
+    "target_yaw",
+    "target_pitch"
+  ],
+  "lgbm_best_val": 2.4269491049205696,
+  "mlp_best_val": 2.2195364807912608
+}

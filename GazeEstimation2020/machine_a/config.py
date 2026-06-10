@@ -70,8 +70,8 @@ AD_WINDOW_X = int(os.getenv("AD_WINDOW_X", "700"))
 AD_WINDOW_Y = int(os.getenv("AD_WINDOW_Y", "20"))
 AD_WINDOW_FULLSCREEN = os.getenv("AD_WINDOW_FULLSCREEN", "0").strip().lower() in {"1", "true", "yes", "on"}
 
-GAZE_MODEL_X_PATH = os.path.join(APP_DIR, "models", "model_x.pkl")
-GAZE_MODEL_Y_PATH = os.path.join(APP_DIR, "models", "model_y.pkl")
+GAZE_MODEL_PATH = os.path.join(APP_DIR, "models", "best_model.joblib")
+GAZE_MODEL_META_PATH = os.path.join(APP_DIR, "models", "best_model_meta.json")
 PUPIL_MODEL_PATH = os.path.join(APP_DIR, "models", "pupilnet_v5.pt")
 FACE_LANDMARKER_MODEL_PATH = os.path.join(APP_DIR, "models", "face_landmarker.task")
 AGE_GENDER_MODEL_PATH = os.getenv(
@@ -92,6 +92,17 @@ IMG_SIZE = 256
 MAX_AGE = 116
 GENDER_THRESHOLD = 0.5
 TRACK_MATCH_IOU_THRESHOLD = 0.3
+GAZE_STATE_IOU_THRESHOLD = float(os.getenv("GAZE_STATE_IOU_THRESHOLD", "0.3"))
+GAZE_STATE_TTL_SECONDS = float(os.getenv("GAZE_STATE_TTL_SECONDS", "1.5"))
+GAZE_EMA_ALPHA = float(os.getenv("GAZE_EMA_ALPHA", "0.2"))
+GAZE_YAW_MIN = float(os.getenv("GAZE_YAW_MIN", "-20.0"))
+GAZE_YAW_MAX = float(os.getenv("GAZE_YAW_MAX", "20.0"))
+GAZE_PITCH_MIN = float(os.getenv("GAZE_PITCH_MIN", "-15.0"))
+GAZE_PITCH_MAX = float(os.getenv("GAZE_PITCH_MAX", "25.0"))
+GAZE_MAX_PITCH_DISAGREEMENT_DEG = float(os.getenv("GAZE_MAX_PITCH_DISAGREEMENT_DEG", "20.0"))
+GAZE_MAX_ABS_YAW_DEG = float(os.getenv("GAZE_MAX_ABS_YAW_DEG", "60.0"))
+GAZE_MAX_ABS_PITCH_DEG = float(os.getenv("GAZE_MAX_ABS_PITCH_DEG", "45.0"))
+GAZE_MIN_EYE_WIDTH_PX = float(os.getenv("GAZE_MIN_EYE_WIDTH_PX", "8.0"))
 
 AGE_RANGES = [
     (0, 17),

@@ -6,7 +6,7 @@ Dự án `GazeEstimation2026` là một hệ thống nhận diện và theo dõi
 - Nhận diện mặt và landmark bằng MediaPipe Face Mesh
 - Trích xuất điểm mắt và ước lượng vị trí nhìn
 - Sử dụng mô hình `PupilNet_v2` cho định vị trung tâm đồng tử
-- Kết hợp mô hình scikit-learn (`model_x.pkl`, `model_y.pkl`) để dự đoán vector gaze (x, y)
+- Kết hợp mô hình scikit-learn `best_model.joblib` để dự đoán đồng thời góc nhìn `(yaw, pitch)` theo độ
 
 ## 📦 Cài đặt
 1. Tạo và kích hoạt virtual environment:
@@ -40,7 +40,7 @@ python EyeTracking.py
 ## 🗂 Cấu trúc thư mục
 - `EyeTracking.py`: script chính demo.
 - `models/PupilNet.py`: định nghĩa mạng neuron, file trọng số `pupilnet_v5.pt`.
-- `models/model_x.pkl`, `models/model_y.pkl`: model học máy cho gaze.
+- `models/best_model.joblib`: Pipeline StandardScaler + MLP nhận vector đặc trưng mắt 14 chiều và trả `(yaw, pitch)`.
 - `utils/eye_sample.py`, `utils/eye_prediction.py`: tiện ích xử lý dữ liệu mắt.
 
 ## ⚠️ Lưu ý

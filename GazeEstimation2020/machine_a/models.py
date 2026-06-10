@@ -1,3 +1,4 @@
+import json
 import os
 
 import joblib
@@ -11,8 +12,8 @@ from models.PupilNet import PupilNet_v2
 from .config import (
     AGE_GENDER_MODEL_PATH,
     FACE_LANDMARKER_MODEL_PATH,
-    GAZE_MODEL_X_PATH,
-    GAZE_MODEL_Y_PATH,
+    GAZE_MODEL_META_PATH,
+    GAZE_MODEL_PATH,
     PUPIL_MODEL_PATH,
 )
 
@@ -86,11 +87,21 @@ class CoralMAE(tf.keras.metrics.Metric):
 def load_models():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model_x = joblib.load(GAZE_MODEL_X_PATH)
-    model_y = joblib.load(GAZE_MODEL_Y_PATH)
+    gaze_model = joblib.load(GAZE_MODEL_PATH)
+    if getattr(gaze_model, "n_features_in_", None) != 14:
+        raise ValueError("Gaze model must accept the 14D eye-landmark feature vector")
+    probe = gaze_model.predict([[0.0] * 14])
+    if getattr(probe, "shape", None) != (1, 2):
+        raise ValueError("Gaze model must return one (yaw, pitch) pair per feature vector")
+
+    if os.path.exists(GAZE_MODEL_META_PATH):
+        with open(GAZE_MODEL_META_PATH, encoding="utf-8") as meta_file:
+            gaze_meta = json.load(meta_file)
+        if gaze_meta.get("targets") != ["target_yaw", "target_pitch"]:
+            raise ValueError("Gaze model metadata must declare target_yaw and target_pitch")
 
     pupil_model = PupilNet_v2()
-    pupil_model.load_state_dict(torch.load(PUPIL_MODEL_PATH, map_location=device))
+    pupil_model.load_state_dict(torch.load(PUPIL_MODEL_PATH, map_location=device, weights_only=True))
     pupil_model = pupil_model.to(device)
     pupil_model.eval()
 
@@ -114,4 +125,4 @@ def load_models():
 
     print(f"Using device: {device}")
     print("Loaded gaze, pupil, and age/gender models successfully.")
-    return device, model_x, model_y, pupil_model, age_gender_model, face_landmarker
+    return device, gaze_model, pupil_model, age_gender_model, face_landmarker

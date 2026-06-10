@@ -28,8 +28,8 @@ pip install -r requirements.txt
 Trong thư mục `models/` cần có các file sau:
 
 - `pupilnet_v5.pt`
-- `model_x.pkl`
-- `model_y.pkl`
+- `best_model.joblib`
+- `best_model_meta.json`
 - `face_landmarker.task`
 
 Nếu thiếu `face_landmarker.task`, tải lại file này vào `models/` trước khi chạy.
@@ -68,7 +68,8 @@ Trong cửa sổ hiển thị, nhấn phím `q` để dừng.
 
 ## 6. Ghi chú
 
-- Khi khởi động, script có thể hiện cảnh báo từ `scikit-learn` do khác phiên bản khi mở file `pkl`. Đây là cảnh báo, không phải lỗi dừng chương trình.
+- `best_model.joblib` được lưu bằng `scikit-learn==1.7.2`; nên dùng đúng phiên bản để tránh sai khác khi nạp model.
+- Có thể hiệu chỉnh vùng nhìn billboard bằng các biến `GAZE_YAW_MIN`, `GAZE_YAW_MAX`, `GAZE_PITCH_MIN`, `GAZE_PITCH_MAX`.
 - Nếu gặp lỗi thiếu thư viện, hãy kiểm tra lại đúng môi trường Python đang được kích hoạt.
 
 ## 7. Chế độ Smart Billboard cho Máy A

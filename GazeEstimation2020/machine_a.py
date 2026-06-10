@@ -35,7 +35,7 @@ from machine_a.pipeline import (
     finalize_ad_session,
 )
 from machine_a.sensor import SensorMonitor
-from machine_a.tracking import ViewerTrackManager
+from machine_a.tracking import GazeStateManager, ViewerTrackManager
 from machine_a.video import LatestFrameGrabber, create_black_frame, resize_canvas
 from machine_a.ui import setup_windows
 
@@ -44,7 +44,7 @@ def main():
     sensor_monitor = SensorMonitor().start()
     grabber = LatestFrameGrabber(VIDEO_SOURCE).start()
     setup_windows()
-    device, model_x, model_y, pupil_model, age_gender_model, face_landmarker = load_models()
+    device, gaze_model, pupil_model, age_gender_model, face_landmarker = load_models()
     demographic_predictor = DemographicPredictor(
         age_gender_model,
         refresh_seconds=DEMOGRAPHIC_REFRESH_SECONDS,
@@ -70,7 +70,7 @@ def main():
     print("Nhấn Q để thoát...")
 
     frame_index = 0
-    gaze_state = {"smooth_x": 0.0, "smooth_y": 0.0}
+    gaze_state = GazeStateManager()
     selection_manager = ViewerTrackManager()
     ad_manager = ViewerTrackManager()
 
@@ -110,8 +110,7 @@ def main():
                             demographic_predictor=demographic_predictor,
                             pupil_model=pupil_model,
                             device=device,
-                            model_x=model_x,
-                            model_y=model_y,
+                            gaze_model=gaze_model,
                             face_landmarker=face_landmarker,
                             annotate=True,
                         )
@@ -231,8 +230,7 @@ def main():
                 demographic_predictor=demographic_predictor,
                 pupil_model=pupil_model,
                 device=device,
-                model_x=model_x,
-                model_y=model_y,
+                gaze_model=gaze_model,
                 face_landmarker=face_landmarker,
                 annotate=True,
             )
