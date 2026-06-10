@@ -1,4 +1,5 @@
 import cv2
+import math
 import numpy as np
 import torch
 import tensorflow as tf  # type: ignore
@@ -16,9 +17,6 @@ from .config import (
     GENDER_THRESHOLD,
     IMG_SIZE,
 )
-
-MP_RIGHT_EYE = {"inner": 133, "outer": 33, "lids": [144, 154, 160, 161]}
-MP_LEFT_EYE = {"inner": 362, "outer": 263, "lids": [373, 381, 387, 388]}
 
 
 def gender_from_prob(prob):
@@ -44,9 +42,9 @@ def audience_segment_id_for_prediction(gender, age_range):
 
 def get_mediapipe_landmarks(mesh_landmarks, w, h):
     landmarks = getattr(mesh_landmarks, "landmark", mesh_landmarks)
-    coords = np.zeros((468, 2), dtype=np.float32)
+    coords = np.zeros((468, 2), dtype=int)
     for i, landmark in enumerate(landmarks[:468]):
-        coords[i] = [landmark.x * w, landmark.y * h]
+        coords[i] = [int(landmark.x * w), int(landmark.y * h)]
     return coords
 
 
@@ -101,6 +99,71 @@ def predict_age_gender(model, face_bgr):
     )
 
 
+# ---- Ánh xạ MediaPipe -> 7 điểm theo ĐÚNG thứ tự unityeyes_processed_14d.csv ----
+# (kiểm chứng bằng PupilNet/check_feature.py, đối chiếu interior_margin của UnityEyes):
+#   point_1 = khóe mắt TRONG (gốc (0,0))         point_2 = khóe mắt NGOÀI (|mag|=1)
+#   point_3..6 = 4 điểm mí (dưới ×2, trên ×2)    point_7 = tâm đồng tử (từ PupilNet)
+MP_RIGHT = {"inner": 133, "outer": 33, "lids": [144, 154, 160, 161]}   # mắt phải (ảnh bên trái)
+MP_LEFT = {"inner": 362, "outer": 263, "lids": [373, 381, 387, 388]}   # mắt trái (ảnh bên phải)
+
+
+def eye_points_7(mp_shape, spec, pupil):
+    """Lấy 7 điểm (2D) theo thứ tự CSV [trong, ngoài, mí×4, đồng tử] từ mediapipe landmarks."""
+    pts = [mp_shape[spec["inner"]], mp_shape[spec["outer"]]]
+    pts += [mp_shape[i] for i in spec["lids"]]
+    pts.append(np.asarray(pupil, dtype=np.float32))
+    return np.asarray(pts, dtype=np.float32)
+
+
+def build_feature_14d(pts7):
+    """Dựng vector 14 chiều từ 7 điểm theo thứ tự CSV [trong, ngoài, mí×4, đồng tử].
+    Tịnh tiến về khóe trong (gốc (0,0)), chuẩn hóa theo khoảng cách 2 khóe; y thô.
+    Tự LẬT NGANG về canonical (khóe ngoài ở +x) — trả về (feat (1,14), mirrored).
+    """
+    pts7 = np.asarray(pts7, dtype=np.float32)
+    inner, outer = pts7[0], pts7[1]
+    norm = np.linalg.norm(inner - outer)
+    feat = (pts7 - inner) / (norm + 1e-9)
+    mirrored = feat[1, 0] < 0          # khóe ngoài đang ở -x => lật về canonical (+x)
+    if mirrored:
+        feat[:, 0] *= -1.0
+    return feat.reshape(1, -1).astype(np.float32), mirrored
+
+
+def predict_gaze_deg(gaze_model, pts7):
+    """Dự đoán đồng thời (yaw, pitch) theo ĐỘ. Tự lật dấu yaw nếu mắt bị mirror về canonical."""
+    feat, mirrored = build_feature_14d(pts7)
+    yaw, pitch = gaze_model.predict(feat)[0]
+    if mirrored:
+        yaw = -yaw                     # đưa yaw về hệ thực của ảnh
+    return float(yaw), float(pitch)
+
+
+def head_angles_from_matrix(matrix):
+    """Tính (yaw, pitch) của ĐẦU theo độ từ facial transformation matrix của MediaPipe.
+
+    Hệ camera của MediaPipe theo chuẩn OpenGL (+X phải, +Y lên, +Z hướng về camera);
+    cột thứ 3 của ma trận xoay là trục +Z của khuôn mặt (hướng mặt) trong hệ camera.
+    Quy ước dấu khớp với góc mắt khi vẽ lên ảnh: yaw dương = quay về bên phải ảnh,
+    pitch dương = cúi xuống (phía dưới ảnh).
+    """
+    m = np.asarray(matrix, dtype=np.float32)
+    fwd = m[:3, 2]
+    yaw = math.degrees(math.atan2(fwd[0], fwd[2]))
+    pitch = math.degrees(math.atan2(-fwd[1], math.hypot(float(fwd[0]), float(fwd[2]))))
+    return yaw, pitch
+
+
+def face_bearing_deg(face_center, frame_w, frame_h, hfov_deg):
+    """Góc phương vị (yaw, pitch) theo độ của khuôn mặt so với trục quang camera,
+    suy từ vị trí tâm mặt trong khung hình và góc mở ngang của camera.
+    Dấu theo hướng ảnh: phải ảnh = yaw dương, dưới ảnh = pitch dương."""
+    fx = (0.5 * frame_w) / math.tan(math.radians(hfov_deg) * 0.5)
+    bearing_yaw = math.degrees(math.atan2(face_center[0] - 0.5 * frame_w, fx))
+    bearing_pitch = math.degrees(math.atan2(face_center[1] - 0.5 * frame_h, fx))
+    return bearing_yaw, bearing_pitch
+
+
 def segment_eyes(frame, landmarks, ow=160, oh=96):
     eyes = []
 
@@ -143,7 +206,9 @@ def segment_eyes(frame, landmarks, ow=160, oh=96):
 
         eyes.append(
             EyeSample(
-                orig_img=frame.copy(),
+                # Machine A only needs the eye crop, transform, and side flag later.
+                # Avoid copying the full-resolution gray frame twice per detected face.
+                orig_img=eye_image,
                 img=eye_image,
                 transform_inv=inv_transform_mat,
                 is_left=is_left,
@@ -157,9 +222,8 @@ def predict_pupil(pupil_model, device, eyes, ow=160, oh=96):
     result = []
     for eye in eyes:
         with torch.no_grad():
-            eye_input = np.asarray(eye.img, dtype=np.float32)[None, None, :, :] / 255.0
-            x = torch.from_numpy(eye_input).to(device)
-            pupil = pupil_model(x)
+            x = torch.tensor([eye.img / 255.0], dtype=torch.float32).to(device)
+            pupil = pupil_model(x.view(1, 1, 96, 160))
             pupil = np.asarray(pupil.cpu().numpy())
             if pupil.shape != (1, 2):
                 continue
@@ -182,38 +246,6 @@ def predict_pupil(pupil_model, device, eyes, ow=160, oh=96):
             result.append(EyePrediction(eye_sample=eye, landmarks=pupil, gaze=None))
 
     return result
-
-
-def eye_points_7(mp_shape, eye_spec, pupil_center):
-    points = [
-        mp_shape[eye_spec["inner"]],
-        mp_shape[eye_spec["outer"]],
-        *[mp_shape[index] for index in eye_spec["lids"]],
-        np.asarray(pupil_center, dtype=np.float32),
-    ]
-    return np.asarray(points, dtype=np.float32)
-
-
-def build_gaze_feature_14d(points_7):
-    points_7 = np.asarray(points_7, dtype=np.float32)
-    inner_corner, outer_corner = points_7[:2]
-    eye_width = float(np.linalg.norm(inner_corner - outer_corner))
-    if eye_width <= 1e-6:
-        raise ValueError("Eye corners are too close to build gaze features")
-
-    feature = (points_7 - inner_corner) / eye_width
-    mirrored = bool(feature[1, 0] < 0)
-    if mirrored:
-        feature[:, 0] *= -1.0
-    return feature.reshape(1, 14).astype(np.float32), mirrored
-
-
-def predict_gaze_degrees(gaze_model, points_7):
-    feature, mirrored = build_gaze_feature_14d(points_7)
-    yaw, pitch = gaze_model.predict(feature)[0]
-    if mirrored:
-        yaw = -yaw
-    return float(yaw), float(pitch)
 
 
 def build_face_bbox(full_mp_shape, frame_width, frame_height, pad_ratio=0.30):

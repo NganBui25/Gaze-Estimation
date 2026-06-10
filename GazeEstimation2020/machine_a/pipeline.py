@@ -1,4 +1,5 @@
 import cv2
+import math
 import mediapipe as mp
 import numpy as np
 import time
@@ -9,12 +10,13 @@ from .config import (
     AD_WINDOW_HEIGHT,
     AD_WINDOW_WIDTH,
     AUDIENCE_WINDOW_SECONDS,
-    GAZE_MAX_ABS_PITCH_DEG,
-    GAZE_MAX_ABS_YAW_DEG,
-    GAZE_MAX_PITCH_DISAGREEMENT_DEG,
-    GAZE_MIN_EYE_WIDTH_PX,
+    CAMERA_HFOV_DEG,
+    GAZE_BEARING_CORRECTION,
+    GAZE_HEAD_WEIGHT,
     GAZE_PITCH_MAX,
     GAZE_PITCH_MIN,
+    GAZE_SMOOTH_ALPHA,
+    GAZE_STATE_TTL_SECONDS,
     GAZE_YAW_MAX,
     GAZE_YAW_MIN,
     REPORT_AD_URL,
@@ -23,16 +25,46 @@ from .config import (
 from .reporting import finalize_attention_session, iso_now, majority_vote, post_json_async, post_json_async_many
 from .tracking import ViewerTrackManager
 from .vision_utils import (
-    MP_LEFT_EYE,
-    MP_RIGHT_EYE,
+    MP_LEFT,
+    MP_RIGHT,
     build_face_bbox,
     eye_points_7,
+    face_bearing_deg,
     get_mediapipe_landmarks,
+    head_angles_from_matrix,
     map_to_dlib_style,
-    predict_gaze_degrees,
+    predict_gaze_deg,
     predict_pupil,
     segment_eyes,
 )
+
+
+def smooth_gaze_for_face(gaze_state, face_center, yaw, pitch, now_ts, match_dist):
+    """EMA làm mượt (yaw, pitch) THEO TỪNG khuôn mặt — ghép mặt giữa các frame bằng
+    tâm bbox gần nhất (trong bán kính match_dist). Trạng thái cũ quá TTL bị xóa.
+    Trước đây cả đám đông dùng chung một cặp smooth_x/smooth_y nên góc nhìn của
+    nhiều người bị trộn lẫn vào nhau."""
+    faces = gaze_state.setdefault("faces", [])
+    faces[:] = [item for item in faces if now_ts - item["ts"] <= GAZE_STATE_TTL_SECONDS]
+
+    best = None
+    best_dist = None
+    for item in faces:
+        if item["ts"] >= now_ts:  # đã được một mặt khác trong frame này nhận
+            continue
+        dist = math.hypot(item["center"][0] - face_center[0], item["center"][1] - face_center[1])
+        if best_dist is None or dist < best_dist:
+            best, best_dist = item, dist
+
+    if best is not None and best_dist <= match_dist:
+        best["yaw"] = GAZE_SMOOTH_ALPHA * yaw + (1 - GAZE_SMOOTH_ALPHA) * best["yaw"]
+        best["pitch"] = GAZE_SMOOTH_ALPHA * pitch + (1 - GAZE_SMOOTH_ALPHA) * best["pitch"]
+        best["center"] = face_center
+        best["ts"] = now_ts
+        return best["yaw"], best["pitch"]
+
+    faces.append({"center": face_center, "yaw": yaw, "pitch": pitch, "ts": now_ts})
+    return yaw, pitch
 
 
 def build_selection_payload(tracks, window_start_ts, window_end_ts):
@@ -89,38 +121,20 @@ def annotate_detections(display_frame, detections):
             )
 
         is_looking_at_screen = detection.get("looking", False)
-        if is_looking_at_screen is None:
-            status_text = "Gaze unavailable"
-            status_color = (0, 165, 255)
-        else:
-            status_text = "Looking" if is_looking_at_screen else "Not looking"
-            status_color = (0, 255, 0) if is_looking_at_screen else (0, 0, 255)
-        yaw = detection.get("yaw")
-        pitch = detection.get("pitch")
-        if yaw is not None and pitch is not None:
-            status_text += f" | yaw={yaw:.1f} pitch={pitch:.1f}"
-        status_y = y2 + 20 if y2 + 42 < h else max(20, y1 + 20)
+        status_text = "Looking" if is_looking_at_screen else "Not looking"
+        gaze_yaw = detection.get("gaze_yaw")
+        gaze_pitch = detection.get("gaze_pitch")
+        if gaze_yaw is not None and gaze_pitch is not None:
+            status_text += f" (y={gaze_yaw:.0f} p={gaze_pitch:.0f})"
+        status_color = (0, 255, 0) if is_looking_at_screen else (0, 0, 255)
         cv2.putText(
             display_frame,
             status_text,
-            (x1, status_y),
+            (x1, min(h - 10, y2 + 20)),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.48,
+            0.55,
             status_color,
-            1,
-        )
-        boundary_text = (
-            f"Left/Right={GAZE_YAW_MIN:.0f}/{GAZE_YAW_MAX:.0f} "
-            f"Up/Down={GAZE_PITCH_MIN:.0f}/{GAZE_PITCH_MAX:.0f} deg"
-        )
-        cv2.putText(
-            display_frame,
-            boundary_text,
-            (x1, min(h - 10, status_y + 18)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.42,
-            (255, 255, 0),
-            1,
+            2,
         )
     return display_frame
 
@@ -142,30 +156,25 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_pre
     else:
         process_frame = frame
 
-    process_h, process_w, _ = process_frame.shape
-    scale_x = source_w / process_w
-    scale_y = source_h / process_h
-
     rgb_frame = cv2.cvtColor(process_frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
     results = face_landmarker.detect(mp_image)
-    gray_frame = cv2.cvtColor(process_frame, cv2.COLOR_BGR2GRAY)
 
     if not results.face_landmarks:
         return display_frame, detections
 
-    for face_landmarks in results.face_landmarks:
-        full_mp_shape = get_mediapipe_landmarks(face_landmarks, process_w, process_h)
+    # Cắt mắt từ frame GỐC (không downscale): với mặt nhỏ/đứng xa, crop mắt từ frame
+    # đã thu nhỏ chỉ còn vài pixel nên PupilNet đoán tâm đồng tử rất kém.
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Head pose từng khuôn mặt (cùng thứ tự với face_landmarks).
+    head_matrixes = getattr(results, "facial_transformation_matrixes", None) or []
+
+    for face_index, face_landmarks in enumerate(results.face_landmarks):
+        # Landmark là tọa độ chuẩn hóa [0,1] -> nhân thẳng với kích thước frame gốc
+        # (detect vẫn chạy trên frame thu nhỏ để giữ tốc độ).
+        full_mp_shape = get_mediapipe_landmarks(face_landmarks, source_w, source_h)
         shape = map_to_dlib_style(full_mp_shape)
-        process_x1, process_y1, process_x2, process_y2 = build_face_bbox(
-            full_mp_shape,
-            process_w,
-            process_h,
-        )
-        x1 = max(0, int(process_x1 * scale_x))
-        y1 = max(0, int(process_y1 * scale_y))
-        x2 = min(source_w, int(process_x2 * scale_x))
-        y2 = min(source_h, int(process_y2 * scale_y))
+        x1, y1, x2, y2 = build_face_bbox(full_mp_shape, source_w, source_h)
 
         face_crop = frame[y1:y2, x1:x2]
         age_range = None
@@ -186,7 +195,7 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_pre
         if face_crop.size > 0 and frame_index % AGE_GENDER_EVERY_N_FRAMES == 0:
             demographic_predictor.submit((x1, y1, x2, y2), face_crop, now_ts)
 
-        is_looking_at_screen = None
+        is_looking_at_screen = False
         smooth_yaw = None
         smooth_pitch = None
         try:
@@ -200,59 +209,67 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_pre
                 center_left = tuple(left_eyes[0].landmarks[0].astype(int))
                 center_right = tuple(right_eyes[0].landmarks[0].astype(int))
 
-                norm_right = float(
-                    np.linalg.norm(
-                        full_mp_shape[MP_RIGHT_EYE["inner"]]
-                        - full_mp_shape[MP_RIGHT_EYE["outer"]]
+                # Dự đoán ĐỒNG THỜI (yaw, pitch) theo độ bằng best_model:
+                # 7 điểm/mắt lấy trực tiếp từ mediapipe landmarks (full_mp_shape)
+                # theo ánh xạ MP_RIGHT/MP_LEFT, cộng tâm đồng tử từ PupilNet.
+                pts7_r = eye_points_7(full_mp_shape, MP_RIGHT, center_right)
+                pts7_l = eye_points_7(full_mp_shape, MP_LEFT, center_left)
+                yaw_r, pitch_r = predict_gaze_deg(gaze_model, pts7_r)
+                yaw_l, pitch_l = predict_gaze_deg(gaze_model, pts7_l)
+                eye_yaw = (yaw_r + yaw_l) / 2.0
+                eye_pitch = (pitch_r + pitch_l) / 2.0
+
+                # Bù góc quay đầu: best_model cho góc mắt SO VỚI ĐẦU (train trên UnityEyes),
+                # người quay đầu về màn hình nhưng mắt thẳng vẫn phải tính là đang nhìn.
+                head_yaw, head_pitch = 0.0, 0.0
+                if face_index < len(head_matrixes):
+                    head_yaw, head_pitch = head_angles_from_matrix(head_matrixes[face_index])
+                total_yaw = eye_yaw + GAZE_HEAD_WEIGHT * head_yaw
+                total_pitch = eye_pitch + GAZE_HEAD_WEIGHT * head_pitch
+
+                # Bù góc phương vị: người đứng lệch biên khung hình nhìn về màn hình
+                # (đặt cạnh camera) có hướng nhìn = -phương_vị, cộng lại để quy về ~0.
+                face_center = (0.5 * (x1 + x2), 0.5 * (y1 + y2))
+                if GAZE_BEARING_CORRECTION:
+                    bearing_yaw, bearing_pitch = face_bearing_deg(
+                        face_center, source_w, source_h, CAMERA_HFOV_DEG
                     )
+                    total_yaw += bearing_yaw
+                    total_pitch += bearing_pitch
+
+                # Làm mượt EMA theo TỪNG khuôn mặt (ghép theo tâm bbox gần nhất)
+                match_dist = max(20.0, 0.5 * (x2 - x1))
+                smooth_yaw, smooth_pitch = smooth_gaze_for_face(
+                    gaze_state, face_center, total_yaw, total_pitch, now_ts, match_dist
                 )
-                norm_left = float(
-                    np.linalg.norm(
-                        full_mp_shape[MP_LEFT_EYE["inner"]]
-                        - full_mp_shape[MP_LEFT_EYE["outer"]]
-                    )
-                )
 
-                if norm_right >= GAZE_MIN_EYE_WIDTH_PX and norm_left >= GAZE_MIN_EYE_WIDTH_PX:
-                    points_right = eye_points_7(full_mp_shape, MP_RIGHT_EYE, center_right)
-                    points_left = eye_points_7(full_mp_shape, MP_LEFT_EYE, center_left)
-                    yaw_right, pitch_right = predict_gaze_degrees(gaze_model, points_right)
-                    yaw_left, pitch_left = predict_gaze_degrees(gaze_model, points_left)
-
-                    # Horizontal eye angles can legitimately have opposite signs
-                    # because both eyes converge toward the same nearby target.
-                    pitch_disagreement = abs(pitch_right - pitch_left)
-                    avg_yaw = (yaw_right + yaw_left) / 2.0
-                    avg_pitch = (pitch_right + pitch_left) / 2.0
-
-                    gaze_is_plausible = (
-                        pitch_disagreement <= GAZE_MAX_PITCH_DISAGREEMENT_DEG
-                        and abs(avg_yaw) <= GAZE_MAX_ABS_YAW_DEG
-                        and abs(avg_pitch) <= GAZE_MAX_ABS_PITCH_DEG
-                    )
-                    if gaze_is_plausible:
-                        smooth_yaw, smooth_pitch = gaze_state.update(
-                            (x1, y1, x2, y2),
-                            avg_yaw,
-                            avg_pitch,
-                            now_ts,
-                        )
-                        is_looking_at_screen = (
-                            GAZE_YAW_MIN < smooth_yaw < GAZE_YAW_MAX
-                            and GAZE_PITCH_MIN < smooth_pitch < GAZE_PITCH_MAX
-                        )
+                is_looking_at_screen = (
+                    GAZE_YAW_MIN < smooth_yaw < GAZE_YAW_MAX
+                ) and (GAZE_PITCH_MIN < smooth_pitch < GAZE_PITCH_MAX)
 
                 if annotate:
-                    display_center_left = (
-                        int(center_left[0] * scale_x),
-                        int(center_left[1] * scale_y),
+                    cv2.circle(display_frame, center_left, 2, (0, 0, 255), -1)
+                    cv2.circle(display_frame, center_right, 2, (0, 0, 255), -1)
+
+                    # Vẽ vector hướng nhìn (xanh lá): góc mắt + góc đầu (không gồm
+                    # bù phương vị — đó là hiệu chỉnh hình học, không phải hướng nhìn).
+                    GAZE_LEN = 2.5
+                    draw_yaw_r = yaw_r + GAZE_HEAD_WEIGHT * head_yaw
+                    draw_pitch_r = pitch_r + GAZE_HEAD_WEIGHT * head_pitch
+                    draw_yaw_l = yaw_l + GAZE_HEAD_WEIGHT * head_yaw
+                    draw_pitch_l = pitch_l + GAZE_HEAD_WEIGHT * head_pitch
+                    norm_r = np.linalg.norm(full_mp_shape[MP_RIGHT["inner"]] - full_mp_shape[MP_RIGHT["outer"]])
+                    norm_l = np.linalg.norm(full_mp_shape[MP_LEFT["inner"]] - full_mp_shape[MP_LEFT["outer"]])
+                    end_r = (
+                        int(center_right[0] + math.sin(math.radians(draw_yaw_r)) * norm_r * GAZE_LEN),
+                        int(center_right[1] + math.sin(math.radians(draw_pitch_r)) * norm_r * GAZE_LEN),
                     )
-                    display_center_right = (
-                        int(center_right[0] * scale_x),
-                        int(center_right[1] * scale_y),
+                    end_l = (
+                        int(center_left[0] + math.sin(math.radians(draw_yaw_l)) * norm_l * GAZE_LEN),
+                        int(center_left[1] + math.sin(math.radians(draw_pitch_l)) * norm_l * GAZE_LEN),
                     )
-                    cv2.circle(display_frame, display_center_left, 2, (0, 0, 255), -1)
-                    cv2.circle(display_frame, display_center_right, 2, (0, 0, 255), -1)
+                    cv2.line(display_frame, center_right, end_r, (0, 255, 0), 2)
+                    cv2.line(display_frame, center_left, end_l, (0, 255, 0), 2)
         except Exception as exc:
             print(f"Gaze prediction error: {exc}")
 
@@ -261,8 +278,8 @@ def collect_viewer_detections(frame, frame_index, gaze_state, *, demographic_pre
                 "bbox": (x1, y1, x2, y2),
                 "audience_segment_id": audience_segment_id,
                 "looking": is_looking_at_screen,
-                "yaw": smooth_yaw,
-                "pitch": smooth_pitch,
+                "gaze_yaw": smooth_yaw,
+                "gaze_pitch": smooth_pitch,
                 "gender_label": gender_label,
                 "age_range": age_range,
                 "age_range_confidence": age_range_confidence,

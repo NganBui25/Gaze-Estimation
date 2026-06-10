@@ -36,7 +36,7 @@ from machine_a.pipeline import (
     finalize_ad_session,
 )
 from machine_a.sensor import SensorMonitor
-from machine_a.tracking import GazeStateManager, ViewerTrackManager
+from machine_a.tracking import ViewerTrackManager
 from machine_a.video import LatestFrameGrabber, create_black_frame, resize_canvas
 from machine_a.ui import setup_windows
 
@@ -81,7 +81,8 @@ def main():
 
     frame_index = 0
     last_source_frame_sequence = None
-    gaze_state = GazeStateManager()
+    # Trạng thái làm mượt (yaw, pitch) theo TỪNG khuôn mặt — pipeline tự quản lý.
+    gaze_state = {}
     selection_manager = ViewerTrackManager()
     ad_manager = ViewerTrackManager()
 
@@ -225,8 +226,7 @@ def main():
                 continue
 
             if not is_new_source_frame:
-                tracking_display_frame = last_tracking_display_frame.copy()
-                cv2.imshow(TRACKING_WINDOW_NAME, tracking_display_frame)
+                cv2.imshow(TRACKING_WINDOW_NAME, last_tracking_display_frame)
                 cv2.imshow(AD_WINDOW_NAME, ad_display_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break

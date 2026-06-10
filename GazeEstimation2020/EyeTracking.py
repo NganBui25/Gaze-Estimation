@@ -10,13 +10,15 @@ from utils.eye_sample import EyeSample
 from utils.eye_prediction import EyePrediction
 from models.PupilNet import PupilNet_v2
 import torch.nn as nn
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision
+from mediapipe.python.solutions import face_mesh as mp_face_mesh
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-model_x = joblib.load('models/model_x.pkl') # model for predicting x-coordinate of gaze vector
-model_y = joblib.load('models/model_y.pkl') # model for predicting y-coordinate of gaze vector
+# Mô hình hồi quy đa đầu ra: nhận vector đặc trưng 14 chiều -> dự đoán ĐỒNG THỜI (yaw, pitch) theo độ.
+# Thay cho model_x.pkl + model_y.pkl (dự đoán lần lượt x rồi y) trước đây.
+# best_model.joblib là Pipeline(StandardScaler + MLP) huấn luyện ở folder EyeTracking/.
+gaze_model = joblib.load('models/best_model.joblib')
+
 model = PupilNet_v2()                # model for predicting pupil center
 model.load_state_dict(torch.load('models/pupilnet_v5.pt', map_location=device))
 
@@ -24,18 +26,12 @@ model.load_state_dict(torch.load('models/pupilnet_v5.pt', map_location=device))
 model = model.to(device)
 print(device)
 
-FACE_LANDMARKER_MODEL_PATH = os.path.join("models", "face_landmarker.task")
-if not os.path.exists(FACE_LANDMARKER_MODEL_PATH):
-    raise FileNotFoundError(
-        f"Missing MediaPipe face landmark model: {FACE_LANDMARKER_MODEL_PATH}"
-    )
-
-face_landmarker = vision.FaceLandmarker.create_from_options(
-    vision.FaceLandmarkerOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=FACE_LANDMARKER_MODEL_PATH),
-        num_faces=5,
-        running_mode=vision.RunningMode.IMAGE,
-    )
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(
+    max_num_faces=5, # Cho phép nhận diện nhiều người
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
 )
 
 def shape_to_np(shape, dtype="int"):
@@ -45,9 +41,8 @@ def shape_to_np(shape, dtype="int"):
     return coords
 
 def get_mediapipe_landmarks(mesh_landmarks, w, h):
-    landmarks = getattr(mesh_landmarks, "landmark", mesh_landmarks)
     coords = np.zeros((468, 2), dtype=int)
-    for i, landmark in enumerate(landmarks[:468]):
+    for i, landmark in enumerate(mesh_landmarks.landmark[:468]):
         coords[i] = [int(landmark.x * w), int(landmark.y * h)]
     return coords
 
@@ -90,6 +85,49 @@ def predict_pupil(eyes, ow=160, oh=96):
             result.append(EyePrediction(eye_sample=eye, landmarks=pupil, gaze=None))
     
     return result
+
+# ---- Ánh xạ MediaPipe -> 7 điểm theo ĐÚNG thứ tự unityeyes_processed_14d.csv ----
+# Đã kiểm chứng bằng check_feature.py (đối chiếu interior_margin của UnityEyes):
+#   point_1 = khóe mắt TRONG (gốc (0,0))         -> MediaPipe inner corner
+#   point_2 = khóe mắt NGOÀI (|mag|=1)           -> MediaPipe outer corner
+#   point_3 = im4  (mí dưới, giữa-ngoài, x~0.64) -> mí dưới ~x0.7
+#   point_4 = im1  (mí dưới, gần trong, x~0.17)  -> mí dưới ~x0.25
+#   point_5 = im12 (mí trên, giữa,      x~0.63)  -> mí trên ~x0.7
+#   point_6 = im10 (mí trên, gần ngoài, x~0.90)  -> mí trên ~x0.85
+#   point_7 = tâm đồng tử (từ PupilNet)
+# x = tỉ lệ vị trí dọc theo trục khóe-trong(0) -> khóe-ngoài(1); mí dưới = +y, mí trên = -y (y thô).
+# Chỉ số mediapipe (refine_landmarks=True) cho viền mắt; có thể tinh chỉnh bằng calibrate_mediapipe.py.
+MP_RIGHT = {"inner": 133, "outer": 33,  "lids": [144, 154, 160, 161]}  # mắt phải (ảnh bên trái)
+MP_LEFT  = {"inner": 362, "outer": 263, "lids": [373, 381, 387, 388]}  # mắt trái (ảnh bên phải)
+
+def eye_points_7(mp_shape, spec, pupil):
+    """Lấy 7 điểm (2D) theo thứ tự CSV [trong, ngoài, mí×4, đồng tử] từ mediapipe landmarks."""
+    pts = [mp_shape[spec["inner"]], mp_shape[spec["outer"]]]
+    pts += [mp_shape[i] for i in spec["lids"]]
+    pts.append(np.asarray(pupil, dtype=np.float32))
+    return np.asarray(pts, dtype=np.float32)
+
+def build_feature_14d(pts7):
+    """Dựng vector 14 chiều từ 7 điểm ĐÃ theo thứ tự CSV [trong, ngoài, mí×4, đồng tử].
+    Tịnh tiến về khóe trong (gốc (0,0)), chuẩn hóa theo khoảng cách 2 khóe; y thô.
+    Tự LẬT NGANG về canonical (khóe ngoài ở +x) — trả về (feat (1,14), mirrored).
+    """
+    pts7 = np.asarray(pts7, dtype=np.float32)
+    inner, outer = pts7[0], pts7[1]
+    norm = np.linalg.norm(inner - outer)
+    feat = (pts7 - inner) / (norm + 1e-9)
+    mirrored = feat[1, 0] < 0          # khóe ngoài đang ở -x => lật về canonical (+x)
+    if mirrored:
+        feat[:, 0] *= -1.0
+    return feat.reshape(1, -1).astype(np.float32), mirrored
+
+def predict_gaze_deg(pts7):
+    """Dự đoán đồng thời (yaw, pitch) theo ĐỘ. Tự lật dấu yaw nếu mắt bị mirror về canonical."""
+    feat, mirrored = build_feature_14d(pts7)
+    yaw, pitch = gaze_model.predict(feat)[0]
+    if mirrored:
+        yaw = -yaw                     # đưa yaw về hệ thực của ảnh
+    return float(yaw), float(pitch)
 
 def segment_eyes(frame, landmarks, ow=160, oh=96):
     eyes = []
@@ -152,7 +190,7 @@ predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat") # pret
 left = [36, 37, 38, 39, 40, 41] # choosing only eye`s landmarks
 right = [42, 43, 44, 45, 46, 47]
 
-cap = cv2.VideoCapture("tcp://192.168.137.183:5000") # initializing webcam
+cap = cv2.VideoCapture(0) # initializing webcam
 ret, img = cap.read()
 shape = None
 """
@@ -161,7 +199,7 @@ while True:
     orig_frame = img.copy()
     frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    rects = detector(gray, 1)   
+    rects = detector(gray, 1)
     
     for rect in rects:
         shape = predictor(gray, rect)
@@ -269,18 +307,17 @@ while True:
 cap.release()
 cv2.destroyAllWindows()
 """
-smooth_x, smooth_y = 0.0, 0.0
+smooth_yaw, smooth_pitch = 0.0, 0.0   # góc lệch ngang/dọc đã làm mượt (độ)
 alpha = 0.2
 while True:
     ret, img = cap.read()
     if not ret: break
     h, w, _ = img.shape
     rgb_frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-    results = face_landmarker.detect(mp_image)
+    results = face_mesh.process(rgb_frame)
 
-    if results.face_landmarks:
-        for face_landmarks in results.face_landmarks:
+    if results.multi_face_landmarks:
+        for face_landmarks in results.multi_face_landmarks:
             # Lấy toàn bộ landmarks
             full_mp_shape = get_mediapipe_landmarks(face_landmarks, w, h)
             # Tạo shape giả lập dlib để tương thích code cũ
@@ -310,86 +347,54 @@ while True:
                     for (x, y) in shape[36:48].astype(int):
                         cv2.circle(img, (x, y), 1, (255, 0, 0), -1)
 
-                    # 2. Logic dự đoán hướng nhìn (Gaze Prediction)
-                    # Tính toán định mức (normalization)
-                    norm_right = np.linalg.norm(shape[36] - shape[39])
-                    norm_left = np.linalg.norm(shape[42] - shape[45])
+                    # 2. Dự đoán hướng nhìn ĐỒNG THỜI (yaw, pitch) bằng best_model.
+                    #    Lấy 7 điểm theo đúng thứ tự CSV trực tiếp từ mediapipe landmarks (full_mp_shape),
+                    #    dùng chỉ số đã ánh xạ MP_RIGHT/MP_LEFT (khớp interior_margin của UnityEyes).
+                    pts7_r = eye_points_7(full_mp_shape, MP_RIGHT, center_right)
+                    pts7_l = eye_points_7(full_mp_shape, MP_LEFT, center_left)
+                    yaw_r, pitch_r = predict_gaze_deg(pts7_r)
+                    yaw_l, pitch_l = predict_gaze_deg(pts7_l)
+                    norm_right = np.linalg.norm(full_mp_shape[133] - full_mp_shape[33])  # vẽ mũi tên
+                    norm_left = np.linalg.norm(full_mp_shape[362] - full_mp_shape[263])
 
-                    # Chuẩn hóa dữ liệu đầu vào cho model_x, model_y
-                    # Mắt phải
-                    ldmks_right = (np.vstack([shape[36:42], center_right]) - shape[36]) / norm_right
-                    feat_r = ldmks_right.reshape(1, -1) # Ép về 2D (1 hàng, nhiều cột)
-                    look_x_r = model_x.predict(feat_r)[0]
-                    
+                    # Góc lệch trung bình 2 mắt (độ)
+                    avg_yaw = (yaw_r + yaw_l) / 2
+                    avg_pitch = (pitch_r + pitch_l) / 2
 
-                    #look_x_r = model_x.predict(ldmks_right.reshape(1, -1)[0])
-                    #look_y_r = model_y.predict(np.append(ldmks_right.reshape(
-                    # ]1, -1), look_x_r).reshape(1, -1)[0])
-                    feat_y_r = np.append(feat_r.flatten(), look_x_r).reshape(1, -1)
-                    look_y_r = model_y.predict(feat_y_r)[0]
-
-                    # Mắt trái
-                    ldmks_left = (np.vstack([shape[42:48], center_left]) - shape[42]) / norm_left
-                    #look_x_l = model_x.predict(ldmks_left.reshape(1, -1)[0])
-                    #look_y_l = model_y.predict(np.append(ldmks_left.reshape(1, -1), look_x_l).reshape(1, -1)[0])
-                    feat_l = ldmks_left.reshape(1, -1)
-                    look_x_l = model_x.predict(feat_l)[0]
-                    feat_y_l = np.append(feat_l.flatten(), look_x_l).reshape(1, -1)
-                    look_y_l = model_y.predict(feat_y_l)[0]
-
-                    # 3. Vẽ vector hướng nhìn (Đường xanh lá)
-                    end_r = (int(look_x_r * norm_right * 1.5 + shape[36][0]), int(look_y_r * norm_right + shape[36][1]))
-                    end_l = (int(look_x_l * norm_left * 1.5 + shape[42][0]), int(look_y_l * norm_left + shape[42][1]))
+                    # 3. Vẽ vector hướng nhìn (đường xanh lá) — đổi góc (độ) sang hướng pixel.
+                    #    Lưu ý dấu: nếu hướng vẽ ngược, đổi dấu sin(pitch)/sin(yaw) cho khớp camera.
+                    GAZE_LEN = 2.5  # hệ số độ dài mũi tên (theo bề rộng mắt)
+                    end_r = (int(center_right[0] + math.sin(math.radians(yaw_r)) * norm_right * GAZE_LEN),
+                             int(center_right[1] + math.sin(math.radians(pitch_r)) * norm_right * GAZE_LEN))
+                    end_l = (int(center_left[0] + math.sin(math.radians(yaw_l)) * norm_left * GAZE_LEN),
+                             int(center_left[1] + math.sin(math.radians(pitch_l)) * norm_left * GAZE_LEN))
                     cv2.line(img, center_right, end_r, (0, 255, 0), 2)
                     cv2.line(img, center_left, end_l, (0, 255, 0), 2)
 
-                    avg_look_x = (look_x_r + look_x_l) / 2
-                    avg_look_y = (look_y_r + look_y_l) / 2
-                    
-                    deviation = math.sqrt(avg_look_x**2 + avg_look_y**2)
-                    angle_deg = deviation * 45 # Hệ số 45 này Ngân có thể căn chỉnh lại
+                    # 4. Làm mượt EMA (theo độ)
+                    smooth_yaw = alpha * avg_yaw + (1 - alpha) * smooth_yaw
+                    smooth_pitch = alpha * avg_pitch + (1 - alpha) * smooth_pitch
 
-                    # Ngưỡng nhìn thẳng (ví dụ dưới 15 độ là đang nhìn cam)
-                    """
-                    if angle_deg < 15.0:
-                        status_text = "STATUS: LOOKING AT CAMERA"
-                        color = (0, 255, 0) # Xanh lá
-                    else:
-                        status_text = f"STATUS: LOOKING AWAY ({angle_deg:.1f} deg)"
-                        color = (0, 0, 255) # Đỏ
-                    cv2.putText(img, status_text, (x_min, y_min - 15), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-                    """
-                    # 1. Áp dụng bộ lọc làm mượt EMA
-                    avg_raw_x = (look_x_r + look_x_l) / 2
-                    avg_raw_y = (look_y_r + look_y_l) / 2
+                    # 5. Vùng "biển quảng cáo" tính bằng ĐỘ (hiệu chỉnh bằng cách nhìn 4 góc màn hình)
+                    YAW_MIN, YAW_MAX = -20.0, 20.0      # góc lệch ngang cho phép (độ)
+                    PITCH_MIN, PITCH_MAX = -15.0, 25.0  # góc lệch dọc cho phép (độ)
+                    is_looking_at_screen = (YAW_MIN < smooth_yaw < YAW_MAX) and \
+                                           (PITCH_MIN < smooth_pitch < PITCH_MAX)
 
-                    smooth_x = alpha * avg_raw_x + (1 - alpha) * smooth_x
-                    smooth_y = alpha * avg_raw_y + (1 - alpha) * smooth_y
-
-                    # 2. ĐỊNH NGHĨA KHÔNG GIAN BIỂN QUẢNG CÁO (Calibration)
-                    # Ngân hãy ngồi nhìn vào 4 góc màn hình để tìm ra các con số này nhé:
-                    SCREEN_X_MIN, SCREEN_X_MAX = -0.5, 0.5  # Ví dụ vùng nhìn chiều ngang
-                    SCREEN_Y_MIN, SCREEN_Y_MAX = -0.15, 0.8  # Ví dụ vùng nhìn chiều dọc (thường lệch xuống dưới)
-
-                    # Kiểm tra xem có đang nhìn vào "biển quảng cáo" không
-                    is_looking_at_screen = (SCREEN_X_MIN < smooth_x < SCREEN_X_MAX) and \
-                                        (SCREEN_Y_MIN < smooth_y < SCREEN_Y_MAX)
-
-                    # 3. HIỂN THỊ KẾT QUẢ
+                    # 6. Hiển thị kết quả
                     if is_looking_at_screen:
                         status_text = "ENGAGED: LOOKING AT BILLBOARD"
-                        color = (0, 255, 0) # Xanh lá - Đang tương tác
+                        color = (0, 255, 0)  # Xanh lá - đang tương tác
                     else:
-                        # Tính độ lệch so với tâm màn hình (ví dụ tâm là 0, 0.3)
-                        error_x = smooth_x - 0
-                        error_y = smooth_y - 0.3
-                        angle_off = math.sqrt(error_x**2 + error_y**2) * 30
+                        # Độ lệch so với tâm vùng màn hình (độ)
+                        cx_deg = (YAW_MIN + YAW_MAX) / 2
+                        cy_deg = (PITCH_MIN + PITCH_MAX) / 2
+                        angle_off = math.sqrt((smooth_yaw - cx_deg) ** 2 + (smooth_pitch - cy_deg) ** 2)
                         status_text = f"NOT LOOKING (Off by {angle_off:.1f} deg)"
                         color = (0, 0, 255)
-                    cv2.putText(img, status_text, (x_min, y_min - 15), 
+                    cv2.putText(img, status_text, (x_min, y_min - 15),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-                    print(f"X: {smooth_x:.2f}, Y: {smooth_y:.2f}")
+                    print(f"yaw: {smooth_yaw:.1f} deg, pitch: {smooth_pitch:.1f} deg")
             except Exception as e:
                 print(f"Error: {e}")
 

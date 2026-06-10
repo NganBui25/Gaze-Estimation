@@ -36,9 +36,12 @@ FRAME_WIDTH = CAPTURE_WIDTH
 FRAME_HEIGHT = CAPTURE_HEIGHT
 FRAME_BUFFERSIZE = 1
 FRAME_STALE_TIMEOUT = float(os.getenv("FRAME_STALE_TIMEOUT", "0.75"))
-VIDEO_RECONNECT_FAILED_READS = _get_int("VIDEO_RECONNECT_FAILED_READS", 8)
+VIDEO_RECONNECT_FAILED_READS = _get_int("VIDEO_RECONNECT_FAILED_READS", 3)
 VIDEO_IDLE_SLEEP_SECONDS = float(os.getenv("VIDEO_IDLE_SLEEP_SECONDS", "0.005"))
-VIDEO_UDP_FIFO_SIZE = _get_int("VIDEO_UDP_FIFO_SIZE", 1_000_000)
+# FFmpeg UDP FIFO is measured in 188-byte packets. This default is about 25 MB.
+VIDEO_UDP_FIFO_SIZE = _get_int("VIDEO_UDP_FIFO_SIZE", 131_072)
+VIDEO_UDP_BUFFER_SIZE = _get_int("VIDEO_UDP_BUFFER_SIZE", 4_194_304)
+VIDEO_UDP_TIMEOUT_US = _get_int("VIDEO_UDP_TIMEOUT_US", 2_000_000)
 VISION_PROCESS_WIDTH = _get_int("VISION_PROCESS_WIDTH", 640)
 DEMOGRAPHIC_REFRESH_SECONDS = float(os.getenv("DEMOGRAPHIC_REFRESH_SECONDS", "1.0"))
 DEMOGRAPHIC_CACHE_TTL_SECONDS = float(os.getenv("DEMOGRAPHIC_CACHE_TTL_SECONDS", "3.0"))
@@ -73,20 +76,36 @@ AD_WINDOW_X = int(os.getenv("AD_WINDOW_X", "700"))
 AD_WINDOW_Y = int(os.getenv("AD_WINDOW_Y", "20"))
 AD_WINDOW_FULLSCREEN = os.getenv("AD_WINDOW_FULLSCREEN", "0").strip().lower() in {"1", "true", "yes", "on"}
 
+# best_model.joblib: Pipeline(StandardScaler + MLP) dự đoán ĐỒNG THỜI (yaw, pitch) theo độ
+# từ vector đặc trưng 14 chiều (7 điểm mắt). Thay cho model_x.pkl + model_y.pkl cũ.
 GAZE_MODEL_PATH = os.path.join(APP_DIR, "models", "best_model.joblib")
-GAZE_MODEL_META_PATH = os.path.join(APP_DIR, "models", "best_model_meta.json")
 PUPIL_MODEL_PATH = os.path.join(APP_DIR, "models", "pupilnet_v5.pt")
+
+# Vùng "đang nhìn màn hình" tính theo ĐỘ (hiệu chỉnh bằng cách nhìn 4 góc màn hình).
+GAZE_YAW_MIN = float(os.getenv("GAZE_YAW_MIN", "-20.0"))
+GAZE_YAW_MAX = float(os.getenv("GAZE_YAW_MAX", "20.0"))
+GAZE_PITCH_MIN = float(os.getenv("GAZE_PITCH_MIN", "-15.0"))
+GAZE_PITCH_MAX = float(os.getenv("GAZE_PITCH_MAX", "25.0"))
+# Hệ số làm mượt EMA cho (yaw, pitch) — áp dụng THEO TỪNG khuôn mặt.
+GAZE_SMOOTH_ALPHA = float(os.getenv("GAZE_SMOOTH_ALPHA", "0.3"))
+# Trạng thái làm mượt của một khuôn mặt bị xóa nếu không thấy lại trong khoảng này (giây).
+GAZE_STATE_TTL_SECONDS = float(os.getenv("GAZE_STATE_TTL_SECONDS", "1.0"))
+
+# Bù góc quay đầu (head pose): góc nhìn thực = góc mắt-trong-đầu + GAZE_HEAD_WEIGHT × góc đầu.
+# Đặt 0 để tắt (quay về hành vi chỉ dùng góc mắt).
+GAZE_HEAD_WEIGHT = float(os.getenv("GAZE_HEAD_WEIGHT", "1.0"))
+# Bù góc phương vị: người đứng lệch khỏi trục camera muốn nhìn màn hình (đặt cạnh camera)
+# phải liếc về phía camera; cộng góc phương vị của khuôn mặt để quy "nhìn màn hình" về ~0 độ.
+GAZE_BEARING_CORRECTION = os.getenv("GAZE_BEARING_CORRECTION", "1").strip().lower() in {"1", "true", "yes", "on"}
+# Góc mở ngang của camera (độ) — dùng để đổi vị trí khuôn mặt trong khung hình sang góc phương vị.
+CAMERA_HFOV_DEG = float(os.getenv("CAMERA_HFOV_DEG", "60.0"))
 FACE_LANDMARKER_MODEL_PATH = os.path.join(APP_DIR, "models", "face_landmarker.task")
+# Mặc định nằm TRONG repo (GazeEstimation2020/models/) để clone từ git là chạy được;
+# đường dẫn cũ trỏ ra ../TrainModelAgeAndGender bên ngoài repo nên sau khi push sẽ gãy.
+# Cần đặt file .keras vào models/ hoặc trỏ qua biến môi trường AGE_GENDER_MODEL_PATH.
 AGE_GENDER_MODEL_PATH = os.getenv(
     "AGE_GENDER_MODEL_PATH",
-    os.path.abspath(
-        os.path.join(
-            ROOT_DIR,
-            "..",
-            "TrainModelAgeAndGender",
-            "age_gender_range_efficientnetv2s_v1.keras",
-        )
-    ),
+    os.path.join(APP_DIR, "models", "age_gender_range_efficientnetv2s_v1.keras"),
 )
 TRACKING_TEST_CSV = os.path.join(APP_DIR, "tracking_test.csv")
 SENSOR_DEFAULT_STATE = os.getenv("SENSOR_DEFAULT_STATE", "Light")
@@ -95,17 +114,6 @@ IMG_SIZE = 256
 MAX_AGE = 116
 GENDER_THRESHOLD = 0.5
 TRACK_MATCH_IOU_THRESHOLD = 0.3
-GAZE_STATE_IOU_THRESHOLD = float(os.getenv("GAZE_STATE_IOU_THRESHOLD", "0.3"))
-GAZE_STATE_TTL_SECONDS = float(os.getenv("GAZE_STATE_TTL_SECONDS", "1.5"))
-GAZE_EMA_ALPHA = float(os.getenv("GAZE_EMA_ALPHA", "0.2"))
-GAZE_YAW_MIN = float(os.getenv("GAZE_YAW_MIN", "-20.0"))
-GAZE_YAW_MAX = float(os.getenv("GAZE_YAW_MAX", "20.0"))
-GAZE_PITCH_MIN = float(os.getenv("GAZE_PITCH_MIN", "-15.0"))
-GAZE_PITCH_MAX = float(os.getenv("GAZE_PITCH_MAX", "25.0"))
-GAZE_MAX_PITCH_DISAGREEMENT_DEG = float(os.getenv("GAZE_MAX_PITCH_DISAGREEMENT_DEG", "20.0"))
-GAZE_MAX_ABS_YAW_DEG = float(os.getenv("GAZE_MAX_ABS_YAW_DEG", "60.0"))
-GAZE_MAX_ABS_PITCH_DEG = float(os.getenv("GAZE_MAX_ABS_PITCH_DEG", "45.0"))
-GAZE_MIN_EYE_WIDTH_PX = float(os.getenv("GAZE_MIN_EYE_WIDTH_PX", "8.0"))
 
 AGE_RANGES = [
     (0, 17),

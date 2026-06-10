@@ -1,5 +1,11 @@
 # Hướng dẫn chạy `EyeTracking.py`
 
+> ⚠️ **Tài liệu này nói về demo đơn lẻ `EyeTracking.py` (legacy).**
+> Pipeline đám đông chính (`machine_a.py`) đã chuyển sang logic hướng nhìn mới
+> (PupilNet train lại + best_model, góc theo độ, bù head pose) — xem
+> **`README_GAZE_PUPILNET.md`** để biết cách chạy, hiệu chỉnh góc theo camera thực tế
+> và danh sách thay đổi.
+
 File này mô tả cách chạy demo theo dõi mắt trong thư mục `GazeEstimation2020`.
 
 ## 1. Chuẩn bị môi trường
@@ -28,8 +34,8 @@ pip install -r requirements.txt
 Trong thư mục `models/` cần có các file sau:
 
 - `pupilnet_v5.pt`
-- `best_model.joblib`
-- `best_model_meta.json`
+- `model_x.pkl`
+- `model_y.pkl`
 - `face_landmarker.task`
 
 Nếu thiếu `face_landmarker.task`, tải lại file này vào `models/` trước khi chạy.
@@ -68,8 +74,7 @@ Trong cửa sổ hiển thị, nhấn phím `q` để dừng.
 
 ## 6. Ghi chú
 
-- `best_model.joblib` được lưu bằng `scikit-learn==1.7.2`; nên dùng đúng phiên bản để tránh sai khác khi nạp model.
-- Có thể hiệu chỉnh vùng nhìn billboard bằng các biến `GAZE_YAW_MIN`, `GAZE_YAW_MAX`, `GAZE_PITCH_MIN`, `GAZE_PITCH_MAX`.
+- Khi khởi động, script có thể hiện cảnh báo từ `scikit-learn` do khác phiên bản khi mở file `pkl`. Đây là cảnh báo, không phải lỗi dừng chương trình.
 - Nếu gặp lỗi thiếu thư viện, hãy kiểm tra lại đúng môi trường Python đang được kích hoạt.
 
 ## 7. Chế độ Smart Billboard cho Máy A
