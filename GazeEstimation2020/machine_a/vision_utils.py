@@ -222,8 +222,9 @@ def predict_pupil(pupil_model, device, eyes, ow=160, oh=96):
     result = []
     for eye in eyes:
         with torch.no_grad():
-            x = torch.tensor([eye.img / 255.0], dtype=torch.float32).to(device)
-            pupil = pupil_model(x.view(1, 1, 96, 160))
+            eye_input = np.asarray(eye.img, dtype=np.float32)[None, None, :, :] / 255.0
+            x = torch.from_numpy(eye_input).to(device)
+            pupil = pupil_model(x)
             pupil = np.asarray(pupil.cpu().numpy())
             if pupil.shape != (1, 2):
                 continue

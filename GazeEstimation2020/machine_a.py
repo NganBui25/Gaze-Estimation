@@ -158,12 +158,16 @@ def main():
                     else:
                         if selected_ad_path is not None:
                             ad_capture.release()
-                            ad_capture, ad_frame_interval = open_ad_capture(selected_ad_path)
-                            ok, ad_frame = ad_capture.read()
-                            if ok:
-                                last_ad_display_frame = resize_canvas(ad_frame, AD_WINDOW_WIDTH, AD_WINDOW_HEIGHT)
-                                ad_display_frame = last_ad_display_frame.copy()
-                                last_ad_frame_ts = now_ts
+                            ad_capture = None
+                            try:
+                                ad_capture, ad_frame_interval = open_ad_capture(selected_ad_path)
+                                ok, ad_frame = ad_capture.read()
+                                if ok:
+                                    last_ad_display_frame = resize_canvas(ad_frame, AD_WINDOW_WIDTH, AD_WINDOW_HEIGHT)
+                                    ad_display_frame = last_ad_display_frame.copy()
+                                    last_ad_frame_ts = now_ts
+                            except Exception as exc:
+                                print(f"Cannot restart ad media {selected_ad_path}: {exc}")
 
                 if last_ad_display_frame is not None:
                     ad_display_frame = last_ad_display_frame.copy()

@@ -10,9 +10,7 @@ from .config import (
     FRAME_STALE_TIMEOUT,
     FRAME_WIDTH,
     VIDEO_RECONNECT_FAILED_READS,
-    VIDEO_UDP_BUFFER_SIZE,
     VIDEO_UDP_FIFO_SIZE,
-    VIDEO_UDP_TIMEOUT_US,
 )
 
 
@@ -59,9 +57,6 @@ class LatestFrameGrabber:
                 self.failed_reads += 1
                 if self.failed_reads >= VIDEO_RECONNECT_FAILED_READS:
                     self.cap.release()
-                    with self.lock:
-                        self.latest_frame = None
-                        self.last_frame_ts = None
                     self.failed_reads = 0
 
             if not ok:
@@ -96,8 +91,6 @@ class LatestFrameGrabber:
         options = {
             "fifo_size": VIDEO_UDP_FIFO_SIZE,
             "overrun_nonfatal": 1,
-            "buffer_size": VIDEO_UDP_BUFFER_SIZE,
-            "timeout": VIDEO_UDP_TIMEOUT_US,
         }
         source = self.source
         separator = "&" if "?" in source else "?"
