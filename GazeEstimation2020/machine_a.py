@@ -22,6 +22,7 @@ from machine_a.config import (
     TRACKING_WINDOW_HEIGHT,
     TRACKING_WINDOW_NAME,
     TRACKING_WINDOW_WIDTH,
+    VIDEO_IDLE_SLEEP_SECONDS,
     VIDEO_SOURCE,
 )
 from machine_a.models import load_models
@@ -40,6 +41,15 @@ from machine_a.video import LatestFrameGrabber, create_black_frame, resize_canva
 from machine_a.ui import setup_windows
 
 
+def open_ad_capture(path):
+    capture = cv2.VideoCapture(path)
+    if not capture.isOpened():
+        raise RuntimeError(f"Cannot open ad media: {path}")
+    fps = float(capture.get(cv2.CAP_PROP_FPS))
+    frame_interval = 1.0 / fps if 1.0 <= fps <= 120.0 else 1.0 / 30.0
+    return capture, frame_interval
+
+
 def main():
     sensor_monitor = SensorMonitor().start()
     grabber = LatestFrameGrabber(VIDEO_SOURCE).start()
@@ -54,7 +64,7 @@ def main():
 
     deadline = time.time() + 10.0
     while time.time() < deadline:
-        ret, _ = grabber.read()
+        ret, _, _ = grabber.read()
         if ret:
             break
         time.sleep(0.2)
@@ -70,6 +80,7 @@ def main():
     print("Nhấn Q để thoát...")
 
     frame_index = 0
+    last_source_frame_sequence = None
     gaze_state = GazeStateManager()
     selection_manager = ViewerTrackManager()
     ad_manager = ViewerTrackManager()
@@ -81,6 +92,7 @@ def main():
     selected_ad = None
     selected_ad_path = None
     ad_capture = None
+    ad_frame_interval = 1.0 / 30.0
     ad_start_ts = None
     last_ad_frame_ts = None
     last_ad_display_frame = None
@@ -94,14 +106,22 @@ def main():
     try:
         while True:
             sensor_state = sensor_monitor.get_state()
-            ret, frame = grabber.read()
+            ret, frame, source_frame_sequence = grabber.read()
             now_ts = time.time()
+            is_new_source_frame = (
+                ret
+                and source_frame_sequence is not None
+                and source_frame_sequence != last_source_frame_sequence
+            )
+            if is_new_source_frame:
+                last_source_frame_sequence = source_frame_sequence
+                frame_index += 1
             should_process_frame = frame_index % PROCESS_EVERY_N_FRAMES == 0
             tracking_display_frame = last_tracking_display_frame.copy()
             ad_display_frame = create_black_frame(AD_WINDOW_WIDTH, AD_WINDOW_HEIGHT)
 
             if state == "ad":
-                if ret:
+                if is_new_source_frame:
                     if should_process_frame:
                         tracking_display_frame, detections = collect_viewer_detections(
                             frame,
@@ -123,9 +143,12 @@ def main():
                             last_tracking_detections,
                         )
                 else:
-                    tracking_display_frame = create_black_frame(TRACKING_WINDOW_WIDTH, TRACKING_WINDOW_HEIGHT)
+                    tracking_display_frame = last_tracking_display_frame.copy()
 
-                if ad_capture is not None and (last_ad_frame_ts is None or now_ts - last_ad_frame_ts >= 0.03):
+                if ad_capture is not None and (
+                    last_ad_frame_ts is None
+                    or now_ts - last_ad_frame_ts >= ad_frame_interval
+                ):
                     ok, ad_frame = ad_capture.read()
                     if ok:
                         last_ad_display_frame = resize_canvas(ad_frame, AD_WINDOW_WIDTH, AD_WINDOW_HEIGHT)
@@ -134,7 +157,7 @@ def main():
                     else:
                         if selected_ad_path is not None:
                             ad_capture.release()
-                            ad_capture = cv2.VideoCapture(selected_ad_path)
+                            ad_capture, ad_frame_interval = open_ad_capture(selected_ad_path)
                             ok, ad_frame = ad_capture.read()
                             if ok:
                                 last_ad_display_frame = resize_canvas(ad_frame, AD_WINDOW_WIDTH, AD_WINDOW_HEIGHT)
@@ -167,7 +190,8 @@ def main():
                 cv2.imshow(AD_WINDOW_NAME, ad_display_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
-                frame_index += 1
+                if not is_new_source_frame:
+                    time.sleep(VIDEO_IDLE_SLEEP_SECONDS)
                 continue
 
             if sensor_state == "Dark":
@@ -187,7 +211,7 @@ def main():
                 cv2.imshow(AD_WINDOW_NAME, ad_display_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
-                frame_index += 1
+                time.sleep(VIDEO_IDLE_SLEEP_SECONDS)
                 continue
 
             if not ret:
@@ -197,8 +221,16 @@ def main():
                 cv2.imshow(AD_WINDOW_NAME, ad_display_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
-                frame_index += 1
                 time.sleep(0.02)
+                continue
+
+            if not is_new_source_frame:
+                tracking_display_frame = last_tracking_display_frame.copy()
+                cv2.imshow(TRACKING_WINDOW_NAME, tracking_display_frame)
+                cv2.imshow(AD_WINDOW_NAME, ad_display_frame)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
+                time.sleep(VIDEO_IDLE_SLEEP_SECONDS)
                 continue
 
             if not should_process_frame:
@@ -220,7 +252,6 @@ def main():
                 cv2.imshow(AD_WINDOW_NAME, ad_display_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
-                frame_index += 1
                 continue
 
             tracking_display_frame, detections = collect_viewer_detections(
@@ -283,9 +314,7 @@ def main():
                     try:
                         selected_ad = extract_ad_selection(no_viewer_signal_request.response)
                         selected_ad_path = resolve_media_path(selected_ad["media_filename"])
-                        ad_capture = cv2.VideoCapture(selected_ad_path)
-                        if not ad_capture.isOpened():
-                            raise RuntimeError(f"Cannot open ad media: {selected_ad_path}")
+                        ad_capture, ad_frame_interval = open_ad_capture(selected_ad_path)
                         ad_manager.reset()
                         state = "ad"
                         ad_start_ts = now_ts
@@ -312,9 +341,7 @@ def main():
                     try:
                         selected_ad = extract_ad_selection(selection_request.response)
                         selected_ad_path = resolve_media_path(selected_ad["media_filename"])
-                        ad_capture = cv2.VideoCapture(selected_ad_path)
-                        if not ad_capture.isOpened():
-                            raise RuntimeError(f"Cannot open ad media: {selected_ad_path}")
+                        ad_capture, ad_frame_interval = open_ad_capture(selected_ad_path)
                         ad_manager.reset()
                         state = "ad"
                         ad_start_ts = now_ts
@@ -347,8 +374,6 @@ def main():
             cv2.imshow(AD_WINDOW_NAME, ad_display_frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
-
-            frame_index += 1
 
     finally:
         if selected_ad is not None and ad_start_ts is not None:

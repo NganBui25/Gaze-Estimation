@@ -99,14 +99,28 @@ def annotate_detections(display_frame, detections):
         pitch = detection.get("pitch")
         if yaw is not None and pitch is not None:
             status_text += f" | yaw={yaw:.1f} pitch={pitch:.1f}"
+        status_y = y2 + 20 if y2 + 42 < h else max(20, y1 + 20)
         cv2.putText(
             display_frame,
             status_text,
-            (x1, min(h - 10, y2 + 20)),
+            (x1, status_y),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
+            0.48,
             status_color,
-            2,
+            1,
+        )
+        boundary_text = (
+            f"Left/Right={GAZE_YAW_MIN:.0f}/{GAZE_YAW_MAX:.0f} "
+            f"Up/Down={GAZE_PITCH_MIN:.0f}/{GAZE_PITCH_MAX:.0f} deg"
+        )
+        cv2.putText(
+            display_frame,
+            boundary_text,
+            (x1, min(h - 10, status_y + 18)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.42,
+            (255, 255, 0),
+            1,
         )
     return display_frame
 

@@ -4,7 +4,14 @@ import time
 import cv2
 import numpy as np
 
-from .config import AD_WINDOW_HEIGHT, AD_WINDOW_WIDTH, FRAME_BUFFERSIZE, FRAME_HEIGHT, FRAME_STALE_TIMEOUT, FRAME_WIDTH
+from .config import (
+    FRAME_BUFFERSIZE,
+    FRAME_HEIGHT,
+    FRAME_STALE_TIMEOUT,
+    FRAME_WIDTH,
+    VIDEO_RECONNECT_FAILED_READS,
+    VIDEO_UDP_FIFO_SIZE,
+)
 
 
 def create_black_frame(width=FRAME_WIDTH, height=FRAME_HEIGHT):
@@ -23,6 +30,7 @@ class LatestFrameGrabber:
         self.stopped = threading.Event()
         self.latest_frame = None
         self.last_frame_ts = None
+        self.frame_sequence = 0
         self.failed_reads = 0
         self.thread = threading.Thread(target=self._update, daemon=True)
 
@@ -43,10 +51,11 @@ class LatestFrameGrabber:
                 with self.lock:
                     self.latest_frame = frame
                     self.last_frame_ts = time.time()
+                    self.frame_sequence += 1
                 self.failed_reads = 0
             else:
                 self.failed_reads += 1
-                if self.failed_reads >= 30:
+                if self.failed_reads >= VIDEO_RECONNECT_FAILED_READS:
                     self.cap.release()
                     self.failed_reads = 0
 
@@ -56,23 +65,35 @@ class LatestFrameGrabber:
     def read(self):
         with self.lock:
             if self.latest_frame is None:
-                return False, None
+                return False, None, None
             is_fresh = (
                 self.last_frame_ts is not None
                 and time.time() - self.last_frame_ts <= FRAME_STALE_TIMEOUT
             )
-            return is_fresh, self.latest_frame.copy()
+            return is_fresh, self.latest_frame.copy(), self.frame_sequence
 
     def _open_capture(self):
-        cap = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG)
+        source = self._prepare_source()
+        cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
         if not cap.isOpened():
-            cap = cv2.VideoCapture(self.source)
+            cap = cv2.VideoCapture(source)
         if cap.isOpened():
             cap.set(cv2.CAP_PROP_BUFFERSIZE, FRAME_BUFFERSIZE)
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
             cap.set(cv2.CAP_PROP_FPS, 15)
         return cap
+
+    def _prepare_source(self):
+        if not isinstance(self.source, str) or not self.source.lower().startswith("udp://"):
+            return self.source
+        if "fifo_size=" in self.source:
+            return self.source
+        separator = "&" if "?" in self.source else "?"
+        return (
+            f"{self.source}{separator}fifo_size={VIDEO_UDP_FIFO_SIZE}"
+            "&overrun_nonfatal=1"
+        )
 
     def release(self):
         self.stopped.set()
